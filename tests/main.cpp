@@ -2,6 +2,7 @@
 
 int main()
 {
-  tiny3Dloader::load("models/Lantern.gltf");
+  tiny3Dloader::glTFLoader loader;
+  loader.load("models/Lantern.gltf", "models/");
   return 0;
 }

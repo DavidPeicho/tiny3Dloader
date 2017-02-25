@@ -32,6 +32,12 @@
 
 namespace tiny3Dloader {
 
+#define TYPE_BYTE (5020)
+#define TYPE_UBYTE (5021)
+#define TYPE_SHORT (5022)
+#define TYPE_USHORT (5023)
+#define TYPE_FLOAT (5026)
+
   namespace scene {
 
     struct Attributes {
@@ -57,17 +63,22 @@ namespace tiny3Dloader {
 
     public:
       virtual scene::Node*
-      load(std::string pathToFile) = 0;
+      load(std::string pathToFile, std::string assetsFolderPath = "") = 0;
+
+      void
+      freeScene();
 
     protected:
-      std::vector<scene::Node*> processedNodes;
+      std::string                             assetsFolderPath_;
+
+      std::unordered_map<uint, scene::Node*>  nodesMap_;
   };
 
   class glTFLoader : Loader {
 
     public:
       scene::Node*
-      load(std::string pathToFile) override;
+      load(std::string pathToFile, std::string assetsFolderPath = "") override;
 
     private:
       void
@@ -76,28 +87,27 @@ namespace tiny3Dloader {
       void
       processMesh(uint nodeId, uint meshId);
 
+      void
+      processBuffer(uint accessorId);
+
+      void
+      registerBuffer(uint bufferId);
+
     private:
       nlohmann::json                          json_;
-      std::unordered_map<uint, scene::Node*>  nodesMap_;
+      std::unordered_map<uint, char*>         binaryFiles_;
 
   };
 
   scene::Node*
-  load(std::string pathToFile);
-
-  scene::Node*
-  load(std::string pathToFile) {
-
-    glTFLoader loader;
-    loader.load(pathToFile);
-
-  }
-
-  scene::Node*
-  glTFLoader::load(std::string pathToFile) {
+  glTFLoader::load(std::string pathToFile, std::string assetsFolderPath) {
 
     std::ifstream stream(pathToFile);
     stream >> this->json_;
+
+    this->assetsFolderPath_ = assetsFolderPath;
+
+    // TODO: Check if every sections are created
 
     uint nodeId = 0;
     auto& sceneNodes = this->json_["nodes"];
@@ -144,6 +154,70 @@ namespace tiny3Dloader {
   void
   glTFLoader::processMesh(uint nodeId, uint meshId) {
 
+    auto& jsonMesh = this->json_["meshes"][meshId];
+    auto& jsonPrimitives = jsonMesh["primitives"];
+
+    for (const auto& jsonPrimitive : jsonPrimitives) {
+      const auto &attributes = jsonPrimitive["attributes"];
+
+      uint normalId = attributes["NORMAL"].get<uint>();
+      uint positionId = attributes["POSITION"].get<uint>();
+
+      processBuffer(normalId);
+      //const auto& normalAccessor = jsonAccessors[normalId];
+      //const auto& positionAccessor = jsonAccessors[positionId];
+      /*uint i = 0;
+      while (attributes.find("TEXCOORD_" + i) != attributes.end()) {
+
+      }*/
+      //std::cout << normalAccessor << std::endl;
+
+    }
+  }
+
+  void
+  glTFLoader::processBuffer(uint accessorId) {
+
+    const auto& jsonAccessors = this->json_["accessors"];
+    const auto& jsonBufferViews = this->json_["bufferViews"];
+
+    const auto& accessor = jsonAccessors[accessorId];
+
+    uint bufferViewId = accessor["bufferView"];
+    const auto& bufferView = jsonBufferViews[bufferViewId];
+
+    uint bufferId = bufferView["buffer"].get<uint>();
+
+    uint accessorBytesOffset = accessor["byteOffset"];
+    uint bufferViewBytesOffset = bufferView["byteOffset"];
+
+    if (this->binaryFiles_.find(bufferId) == this->binaryFiles_.end()) {
+      std::cout << "Not save -> " << std::endl;
+      registerBuffer(bufferId);
+    }
+
+  }
+
+  void
+  glTFLoader::registerBuffer(uint bufferId) {
+
+    const auto& jsonBuffers = this->json_["buffers"];
+    const auto& jsonBuffer = jsonBuffers[bufferId];
+
+    std::string uri = this->assetsFolderPath_ + jsonBuffer["uri"].get<std::string>();
+    std::ifstream ifs(uri, std::ios::in
+                      | std::ios::binary
+                      | std::ios::ate);
+
+    // TODO: Handles binary file not read
+
+    std::ifstream::pos_type fileSize = ifs.tellg();
+    char* buffer = new char[fileSize];
+
+    ifs.seekg(0, std::ios::beg);
+    ifs.read(buffer, fileSize);
+
+    this->binaryFiles_[bufferId] = buffer;
   }
 
 } // namespace tiny3Dloader
