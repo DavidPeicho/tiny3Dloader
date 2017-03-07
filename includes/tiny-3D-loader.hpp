@@ -43,17 +43,36 @@ namespace tiny3Dloader {
     };
 
     struct Node {
+
+      ~Node();
+
       std::string         name;
       std::vector<Mesh*>  meshes;
       std::vector<Node*>  children;
+
+      std::vector<float>  translation;
+      std::vector<float>  rotation;
+      std::vector<float>  scale;
+      std::vector<float>  matrix;
     };
+
+    Node::~Node() {
+
+      for (const auto& meshPtr : meshes) {
+        delete meshPtr;
+      }
+
+      meshes.clear();
+      children.clear();
+
+    }
 
   } // namespace scene
 
   class Loader {
 
     public:
-      virtual scene::Node*
+      virtual std::vector<scene::Node*>
       load(std::string pathToFile, std::string assetsFolderPath = "") = 0;
 
       void
@@ -102,12 +121,15 @@ namespace tiny3Dloader {
     };
 
     public:
-      scene::Node*
+      std::vector<scene::Node*>
       load(std::string pathToFile, std::string assetsFolderPath = "") override;
 
     private:
       void
       processNode(uint nodeId);
+
+      void
+      processTransform(uint nodeId);
 
       void
       processMesh(uint nodeId, uint meshId);
@@ -125,7 +147,16 @@ namespace tiny3Dloader {
 
   };
 
-  scene::Node*
+  void
+  Loader::freeScene() {
+
+    for (const auto& nodePtr : nodesMap_) {
+      delete nodePtr.second;
+    }
+
+  }
+
+  std::vector<scene::Node*>
   glTFLoader::load(std::string pathToFile, std::string assetsFolderPath) {
 
     std::ifstream stream(pathToFile);
@@ -152,11 +183,21 @@ namespace tiny3Dloader {
         processNode(nodeId);
         ++nodeId;
     }
+
+    std::vector<scene::Node*> roots;
+
+    auto& scenes = this->json_["scenes"];
+    if (scenes.count("nodes")) {
+      for (uint nodeId : scenes["nodes"]) {
+        roots.push_back(nodesMap_[nodeId]);
+      }
+    }
+
+    return roots;
   }
 
   void
   glTFLoader::processNode(uint nodeId) {
-
 
     auto& jsonNode = this->json_["nodes"][nodeId];
     auto& node = nodesMap_[nodeId];
@@ -172,18 +213,44 @@ namespace tiny3Dloader {
       processMesh(nodeId, jsonNode["mesh"]);
     }
 
+    processTransform(nodeId);
+
     // Handles parenting by linking
-    // the children to the current nodes.
+    // the children to the current node.
     if (jsonNode.find("children") != jsonNode.end()) {
       for (const auto childId : jsonNode["children"]) {
-        processMesh(nodeId, childId);
+        const auto& it = this->nodesMap_.find(childId);
+        if (this->nodesMap_.find(childId) != this->nodesMap_.end()) {
+          node->children.push_back(it->second);
+        }
       }
+    }
+  }
+
+  void
+  glTFLoader::processTransform(uint nodeId) {
+
+    auto& parentNode = nodesMap_[nodeId];
+    auto& jsonNode = this->json_["nodes"][nodeId];
+
+    if (jsonNode.count("translation")) {
+      parentNode->translation = jsonNode["translation"].get<std::vector<float>>();
+    }
+    if (jsonNode.count("rotation")) {
+      parentNode->rotation = jsonNode["rotation"].get<std::vector<float>>();
+    }
+    if (jsonNode.count("scale")) {
+      parentNode->scale = jsonNode["scale"].get<std::vector<float>>();
+    }
+    if (jsonNode.count("matrix")) {
+      parentNode->matrix = jsonNode["matrix"].get<std::vector<float>>();
     }
   }
 
   void
   glTFLoader::processMesh(uint nodeId, uint meshId) {
 
+    // TODO: Remove duplicate meshes allocated severeal times
     auto& parentNode = nodesMap_[nodeId];
 
     auto& jsonMesh = this->json_["meshes"][meshId];
@@ -300,13 +367,13 @@ namespace tiny3Dloader {
                       | std::ios::binary
                       | std::ios::ate);
 
-    // TODO: Handles binary file not read
+    // TODO: Handle binary file not read
 
     std::ifstream::pos_type fileSize = ifs.tellg();
     char* buffer = new char[fileSize];
 
     ifs.seekg(0, std::ios::beg);
-    // TODO: Handles read fail
+    // TODO: Handle read fail
     ifs.read(buffer, fileSize);
 
     this->binaryFiles_[bufferId] = reinterpret_cast<uint8_t*>(buffer);
