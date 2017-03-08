@@ -127,11 +127,22 @@ namespace tiny3Dloader {
       MAT4 = 16,
     };
 
+    enum Target {
+      ARRAY_BUFFER = 34962,
+      ELEMENT_ARRAY_BUFFER = 34963,
+    };
+
     public:
       std::vector<scene::Node*>
       load(std::string pathToFile, std::string assetsFolderPath = "") override;
 
     private:
+      void
+      checkValidity();
+
+      void
+      checkMissingKey(const std::string& key);
+
       void
       processNode(uint nodeId);
 
@@ -165,6 +176,15 @@ namespace tiny3Dloader {
 
       void
       freeScene();
+
+    public:
+      inline const std::string
+      getError() const {
+
+        if (loader_) return loader_->getError();
+        return "";
+
+      }
 
     private:
       Loader* loader_;
@@ -200,6 +220,30 @@ namespace tiny3Dloader {
 
   }
 
+  void
+  glTFLoader::checkValidity() {
+
+    // Top level missing keys checks
+    checkMissingKey("scenes");
+    checkMissingKey("nodes");
+    checkMissingKey("accessors");
+    checkMissingKey("bufferViews");
+    checkMissingKey("buffers");
+
+  }
+
+  void
+  glTFLoader::checkMissingKey(const std::string& key) {
+
+    if (!this->json_.count(key)) {
+      std::string error = "MissingKey: '" + key;
+      error += "' not found.";
+
+      this->logError(error);
+    }
+
+  }
+
   std::vector<scene::Node*>
   glTFLoader::load(std::string pathToFile, std::string assetsFolderPath) {
 
@@ -208,7 +252,7 @@ namespace tiny3Dloader {
 
     this->assetsFolderPath_ = assetsFolderPath;
 
-    // TODO: Check if every sections are created
+    checkValidity();
 
     uint nodeId = 0;
     auto& sceneNodes = this->json_["nodes"];
@@ -216,25 +260,33 @@ namespace tiny3Dloader {
     // Allocates every nodes and add
     // them to the unordered map.
     for (const auto& jsonNode : sceneNodes) {
+
       scene::Node* node = new scene::Node;
       this->nodesMap_[nodeId] = node;
 
       ++nodeId;
+
     }
 
     nodeId = 0;
     for (const auto& jsonNode : sceneNodes) {
+
         processNode(nodeId);
         ++nodeId;
+
     }
 
     std::vector<scene::Node*> roots;
 
     auto& scenes = this->json_["scenes"];
     if (scenes.count("nodes")) {
+
       for (uint nodeId : scenes["nodes"]) {
+
         roots.push_back(nodesMap_[nodeId]);
+
       }
+
     }
 
     return roots;
@@ -249,11 +301,11 @@ namespace tiny3Dloader {
 
     debug("Node: " + std::to_string(nodeId) + " [" + node->name + "]");
 
-    if (jsonNode.find("name") != jsonNode.end()) {
+    if (jsonNode.count("name")) {
       node->name = jsonNode["name"];
     }
 
-    if (jsonNode.find("mesh") != jsonNode.end()) {
+    if (jsonNode.count("mesh")) {
       processMesh(nodeId, jsonNode["mesh"]);
     }
 
@@ -262,12 +314,18 @@ namespace tiny3Dloader {
     // Handles parenting by linking
     // the children to the current node.
     if (jsonNode.find("children") != jsonNode.end()) {
+
       for (const auto childId : jsonNode["children"]) {
+
         const auto& it = this->nodesMap_.find(childId);
         if (this->nodesMap_.find(childId) != this->nodesMap_.end()) {
+
           node->children.push_back(it->second);
+
         }
+
       }
+
     }
   }
 
@@ -278,16 +336,24 @@ namespace tiny3Dloader {
     auto& jsonNode = this->json_["nodes"][nodeId];
 
     if (jsonNode.count("translation")) {
+
       parentNode->translation = jsonNode["translation"].get<std::vector<float>>();
+
     }
     if (jsonNode.count("rotation")) {
+
       parentNode->rotation = jsonNode["rotation"].get<std::vector<float>>();
+
     }
     if (jsonNode.count("scale")) {
+
       parentNode->scale = jsonNode["scale"].get<std::vector<float>>();
+
     }
     if (jsonNode.count("matrix")) {
+
       parentNode->matrix = jsonNode["matrix"].get<std::vector<float>>();
+
     }
   }
 
@@ -303,6 +369,7 @@ namespace tiny3Dloader {
     this->debug("\tMesh: " + std::to_string(meshId));
 
     for (const auto& jsonPrimitive : jsonPrimitives) {
+
       scene::Mesh* mesh = new scene::Mesh;
       const auto &attributes = jsonPrimitive["attributes"];
 
@@ -314,8 +381,10 @@ namespace tiny3Dloader {
 
       // Processes all texcoords
       for (uint i = 0; attributes.find("TEXCOORD_" + i) != attributes.end(); ++i) {
+
         uint texcoordId = attributes["TEXCOORD_" + i].get<uint>();
         processAccessor(texcoordId, mesh->texcoords);
+
       }
 
       // Processes primitive indexes
@@ -323,6 +392,7 @@ namespace tiny3Dloader {
       processAccessor(indicesId, mesh->indices);
 
       parentNode->meshes.push_back(mesh);
+
     }
   }
 
@@ -350,8 +420,11 @@ namespace tiny3Dloader {
 
     const auto& jsonAccessors = this->json_["accessors"];
     const auto& jsonBufferViews = this->json_["bufferViews"];
+
     const auto& accessor = jsonAccessors[accessorId];
-    const auto& bufferView = jsonBufferViews[accessor["bufferView"].get<uint>()];
+    uint bufferViewId = accessor["bufferView"];
+
+    const auto& bufferView = jsonBufferViews[bufferViewId];
 
     uint count = accessor["count"];
     uint componentType = accessor["componentType"].get<uint>();
@@ -364,6 +437,20 @@ namespace tiny3Dloader {
     uint bufferId = bufferView["buffer"].get<uint>();
     uint offset = accessor["byteOffset"].get<uint>() + bufferView["byteOffset"].get<uint>();
 
+    if (bufferView.count("target")) {
+
+      uint target = bufferView["target"];
+      if (target == glTFLoader::Target::ELEMENT_ARRAY_BUFFER && byteStride != 0) {
+
+        std::string error = "BufferView '" + bufferViewId;
+        error += "': target is ELEMENT_ARRAY_BUFFER but byteStride is not null.";
+        this->logError(error);
+        return;
+
+      }
+
+    }
+
     if (this->binaryFiles_.find(bufferId) == this->binaryFiles_.end()) {
 
       if (!registerBuffer(bufferId)) return;
@@ -371,22 +458,30 @@ namespace tiny3Dloader {
     }
 
     uint8_t * rawData = this->binaryFiles_[bufferId];
-    if (rawData == nullptr)
+    if (rawData == nullptr) return;
+
+    if (sizeof(T) < bytePerComponent) {
+
+      std::string error = "ComponentType: Bytes per component is " + bytePerComponent;
+      error += " but loader expected at most " + sizeof(T);
+      this->logError(error);
       return;
 
-    if (sizeof(T) < bytePerComponent)
-      return;
+    }
 
     result.reserve(count);
     if (byteStride == elementSize && sizeof(T) == bytePerComponent) {
+
       copy(&rawData[0], &rawData[count], back_inserter(result));
+
     }
-    /*else {
+    else {
       for (size_t i = 0; i < count; ++i) {
-        memcpy(rawData + i, rawData + i * byteStride, elementSize);
+        //memcpy(rawData + i, rawData + i * byteStride, elementSize);
+
         // result[i * byteStride]
       }
-    }*/
+    }
 
     /*for (uint t = 0; t < result.size(); t++) {
       std::cout << result[t] << ' ';
@@ -416,8 +511,10 @@ namespace tiny3Dloader {
 
     // TODO: Handle binary file not read
     if (ifs.fail()) {
+
       this->logError("Invalid File: '" + uri + " not found.");
       return false;
+
     }
 
     std::ifstream::pos_type fileSize = ifs.tellg();
