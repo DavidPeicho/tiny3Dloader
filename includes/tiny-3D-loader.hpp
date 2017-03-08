@@ -81,6 +81,10 @@ namespace tiny3Dloader {
       inline void
       setDebug(bool debug) { debug_ = debug; }
 
+    public:
+      inline const std::string&
+      getError() const { return errorStr_; }
+
     protected:
       inline void
       debug(const std::string& message) {
@@ -89,6 +93,9 @@ namespace tiny3Dloader {
           std::cout << message << std::endl;
 
       };
+
+      inline void
+      logError(const std::string& errorMsg) { errorStr_ += errorMsg + "\n"; }
 
     protected:
       std::string                             assetsFolderPath_;
@@ -135,10 +142,10 @@ namespace tiny3Dloader {
       processMesh(uint nodeId, uint meshId);
 
       template <typename T>
-      bool
+      void
       processAccessor(uint accessorId, std::vector<T>& result);
 
-      void
+      bool
       registerBuffer(uint bufferId);
 
     private:
@@ -146,6 +153,43 @@ namespace tiny3Dloader {
       std::unordered_map<uint, uint8_t*>      binaryFiles_;
 
   };
+
+  class Importer {
+
+    public:
+      bool
+      load(std::string pathToFile, std::vector<scene::Node*>& roots);
+
+      bool
+      load(std::string pathToFile, std::string assetsFolderPath, std::vector<scene::Node*>& roots);
+
+      void
+      freeScene();
+
+    private:
+      Loader* loader_;
+
+  };
+
+  bool
+  Importer::load(std::string pathToFile, std::vector<scene::Node *> &roots) {
+
+    return load(pathToFile, "", roots);
+
+  }
+
+  bool
+  Importer::load(std::string pathToFile, std::string assetsFolderPath, std::vector<scene::Node *> &roots) {
+
+    std::string ext = pathToFile.substr(pathToFile.find_last_of(".") + 1);
+    if (ext == "gltf")
+      this->loader_ = new glTFLoader;
+    else
+      return false;
+
+    this->loader_->load(pathToFile, assetsFolderPath);
+    return this->loader_->getError().empty();
+  }
 
   void
   Loader::freeScene() {
@@ -283,7 +327,7 @@ namespace tiny3Dloader {
   }
 
   template <typename T>
-  bool
+  void
   glTFLoader::processAccessor(uint accessorId,  std::vector<T>& result) {
 
     static std::map<std::string, glTFLoader::Type> typeTable = {
@@ -320,15 +364,18 @@ namespace tiny3Dloader {
     uint bufferId = bufferView["buffer"].get<uint>();
     uint offset = accessor["byteOffset"].get<uint>() + bufferView["byteOffset"].get<uint>();
 
-    if (this->binaryFiles_.find(bufferId) == this->binaryFiles_.end())
-      registerBuffer(bufferId);
+    if (this->binaryFiles_.find(bufferId) == this->binaryFiles_.end()) {
+
+      if (!registerBuffer(bufferId)) return;
+
+    }
 
     uint8_t * rawData = this->binaryFiles_[bufferId];
     if (rawData == nullptr)
-      return false;
+      return;
 
     if (sizeof(T) < bytePerComponent)
-      return false;
+      return;
 
     result.reserve(count);
     if (byteStride == elementSize && sizeof(T) == bytePerComponent) {
@@ -356,7 +403,7 @@ namespace tiny3Dloader {
     this->debug("\t-> Accessing buffer '" + std::to_string(bufferId) + "' > " + std::to_string(count));
   }
 
-  void
+  bool
   glTFLoader::registerBuffer(uint bufferId) {
 
     const auto& jsonBuffers = this->json_["buffers"];
@@ -368,6 +415,10 @@ namespace tiny3Dloader {
                       | std::ios::ate);
 
     // TODO: Handle binary file not read
+    if (ifs.fail()) {
+      this->logError("Invalid File: '" + uri + " not found.");
+      return false;
+    }
 
     std::ifstream::pos_type fileSize = ifs.tellg();
     char* buffer = new char[fileSize];
@@ -377,6 +428,7 @@ namespace tiny3Dloader {
     ifs.read(buffer, fileSize);
 
     this->binaryFiles_[bufferId] = reinterpret_cast<uint8_t*>(buffer);
+    return true;
   }
 
 } // namespace tiny3Dloader
