@@ -72,8 +72,13 @@ namespace tiny3Dloader {
   class Loader {
 
     public:
-      virtual std::vector<scene::Node*>
-      load(std::string pathToFile, std::string assetsFolderPath = "") = 0;
+      virtual void
+      load(std::string pathToFile, std::vector<scene::Node*> roots);
+
+      virtual void
+      load(const std::string& pathToFile,
+           const std::string& assetsFolderPath,
+           std::vector<scene::Node*>& roots) = 0;
 
       void
       freeScene();
@@ -96,6 +101,9 @@ namespace tiny3Dloader {
 
       inline void
       logError(const std::string& errorMsg) { errorStr_ += errorMsg + "\n"; }
+
+      inline void
+      logMissingFile(const std::string& file) { logError("Invalid File: '" + file + " not found."); }
 
     protected:
       std::string                             assetsFolderPath_;
@@ -133,8 +141,10 @@ namespace tiny3Dloader {
     };
 
     public:
-      std::vector<scene::Node*>
-      load(std::string pathToFile, std::string assetsFolderPath = "") override;
+      void
+      load(const std::string& pathToFile,
+           const std::string& assetsFolderPath,
+           std::vector<scene::Node*>& roots) override;
 
     private:
       void
@@ -169,10 +179,11 @@ namespace tiny3Dloader {
 
     public:
       bool
-      load(std::string pathToFile, std::vector<scene::Node*>& roots);
+      load(const std::string& pathToFile, std::vector<scene::Node*>& roots);
 
       bool
-      load(std::string pathToFile, std::string assetsFolderPath, std::vector<scene::Node*>& roots);
+      load(const std::string& pathToFile, const std::string& assetsFolderPath,
+           std::vector<scene::Node*>& roots);
 
       void
       freeScene();
@@ -192,14 +203,17 @@ namespace tiny3Dloader {
   };
 
   bool
-  Importer::load(std::string pathToFile, std::vector<scene::Node *> &roots) {
+  Importer::load(const std::string& pathToFile,
+                 std::vector<scene::Node *> &roots) {
 
     return load(pathToFile, "", roots);
 
   }
 
   bool
-  Importer::load(std::string pathToFile, std::string assetsFolderPath, std::vector<scene::Node *> &roots) {
+  Importer::load(const std::string& pathToFile,
+                 const std::string& assetsFolderPath,
+                 std::vector<scene::Node*>& roots) {
 
     std::string ext = pathToFile.substr(pathToFile.find_last_of(".") + 1);
     if (ext == "gltf")
@@ -207,8 +221,15 @@ namespace tiny3Dloader {
     else
       return false;
 
-    this->loader_->load(pathToFile, assetsFolderPath);
+    this->loader_->load(pathToFile, assetsFolderPath, roots);
     return this->loader_->getError().empty();
+  }
+
+  void
+  Loader::load(std::string pathToFile, std::vector<scene::Node *> roots) {
+
+    this->load(pathToFile, "", roots);
+
   }
 
   void
@@ -221,33 +242,16 @@ namespace tiny3Dloader {
   }
 
   void
-  glTFLoader::checkValidity() {
-
-    // Top level missing keys checks
-    checkMissingKey("scenes");
-    checkMissingKey("nodes");
-    checkMissingKey("accessors");
-    checkMissingKey("bufferViews");
-    checkMissingKey("buffers");
-
-  }
-
-  void
-  glTFLoader::checkMissingKey(const std::string& key) {
-
-    if (!this->json_.count(key)) {
-      std::string error = "MissingKey: '" + key;
-      error += "' not found.";
-
-      this->logError(error);
-    }
-
-  }
-
-  std::vector<scene::Node*>
-  glTFLoader::load(std::string pathToFile, std::string assetsFolderPath) {
+  glTFLoader::load(const std::string& pathToFile,
+                   const std::string& assetsFolderPath,
+                   std::vector<scene::Node*>& roots) {
 
     std::ifstream stream(pathToFile);
+    if (stream.fail()) {
+
+      this->logMissingFile(pathToFile);
+      return;
+    }
     stream >> this->json_;
 
     this->assetsFolderPath_ = assetsFolderPath;
@@ -276,8 +280,6 @@ namespace tiny3Dloader {
 
     }
 
-    std::vector<scene::Node*> roots;
-
     auto& scenes = this->json_["scenes"];
     if (scenes.count("nodes")) {
 
@@ -289,7 +291,6 @@ namespace tiny3Dloader {
 
     }
 
-    return roots;
   }
 
   void
@@ -512,7 +513,7 @@ namespace tiny3Dloader {
     // TODO: Handle binary file not read
     if (ifs.fail()) {
 
-      this->logError("Invalid File: '" + uri + " not found.");
+      this->logMissingFile(uri);
       return false;
 
     }
@@ -526,6 +527,30 @@ namespace tiny3Dloader {
 
     this->binaryFiles_[bufferId] = reinterpret_cast<uint8_t*>(buffer);
     return true;
+  }
+
+  void
+  glTFLoader::checkValidity() {
+
+    // Top level missing keys checks
+    checkMissingKey("scenes");
+    checkMissingKey("nodes");
+    checkMissingKey("accessors");
+    checkMissingKey("bufferViews");
+    checkMissingKey("buffers");
+
+  }
+
+  void
+  glTFLoader::checkMissingKey(const std::string& key) {
+
+    if (!this->json_.count(key)) {
+      std::string error = "MissingKey: '" + key;
+      error += "' not found.";
+
+      this->logError(error);
+    }
+
   }
 
 } // namespace tiny3Dloader
