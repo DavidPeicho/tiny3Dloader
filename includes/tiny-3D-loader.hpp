@@ -43,7 +43,6 @@ namespace tiny3Dloader {
     };
 
     struct Node {
-
       ~Node();
 
       std::string         name;
@@ -54,6 +53,11 @@ namespace tiny3Dloader {
       std::vector<float>  rotation;
       std::vector<float>  scale;
       std::vector<float>  matrix;
+    };
+
+    struct Scene {
+      std::string         name;
+      std::vector<Node*>  nodes;
     };
 
     Node::~Node() {
@@ -73,12 +77,12 @@ namespace tiny3Dloader {
 
     public:
       virtual void
-      load(std::string pathToFile, std::vector<scene::Node*> roots);
+      load(std::string pathToFile, std::vector<scene::Scene*> scenes);
 
       virtual void
       load(const std::string& pathToFile,
            const std::string& assetsFolderPath,
-           std::vector<scene::Node*>& roots) = 0;
+           std::vector<scene::Scene*>& scenes) = 0;
 
       void
       freeScene();
@@ -100,10 +104,15 @@ namespace tiny3Dloader {
       };
 
       inline void
-      logError(const std::string& errorMsg) { errorStr_ += errorMsg + "\n"; }
+      logError(const std::string& errorMsg) {
+        errorStr_ += "Error: ";
+        errorStr_ += errorMsg + "\n";
+      }
 
       inline void
-      logMissingFile(const std::string& file) { logError("Invalid File: '" + file + " not found."); }
+      logMissingFile(const std::string& file) {
+        logError("Invalid File: '" + file + " not found.");
+      }
 
     protected:
       std::string                             assetsFolderPath_;
@@ -112,7 +121,7 @@ namespace tiny3Dloader {
       std::unordered_map<uint, scene::Node*>  nodesMap_;
 
     private:
-      bool                                    debug_;
+      bool                                    debug_ = false;
   };
 
   class glTFLoader : public Loader {
@@ -144,15 +153,9 @@ namespace tiny3Dloader {
       void
       load(const std::string& pathToFile,
            const std::string& assetsFolderPath,
-           std::vector<scene::Node*>& roots) override;
+           std::vector<scene::Scene*>& scenes) override;
 
     private:
-      void
-      checkValidity();
-
-      void
-      checkMissingKey(const std::string& key);
-
       void
       processNode(uint nodeId);
 
@@ -169,6 +172,12 @@ namespace tiny3Dloader {
       bool
       registerBuffer(uint bufferId);
 
+      bool
+      checkValidity();
+
+      bool
+      checkMissingKey(const std::string& key);
+
     private:
       nlohmann::json                          json_;
       std::unordered_map<uint, uint8_t*>      binaryFiles_;
@@ -179,11 +188,11 @@ namespace tiny3Dloader {
 
     public:
       bool
-      load(const std::string& pathToFile, std::vector<scene::Node*>& roots);
+      load(const std::string& pathToFile, std::vector<scene::Scene*>& scenes);
 
       bool
       load(const std::string& pathToFile, const std::string& assetsFolderPath,
-           std::vector<scene::Node*>& roots);
+           std::vector<scene::Scene*>& scenes);
 
       void
       freeScene();
@@ -204,31 +213,32 @@ namespace tiny3Dloader {
 
   bool
   Importer::load(const std::string& pathToFile,
-                 std::vector<scene::Node *> &roots) {
+                 std::vector<scene::Scene*>& scenes) {
 
-    return load(pathToFile, "", roots);
+    return load(pathToFile, "", scenes);
 
   }
 
   bool
   Importer::load(const std::string& pathToFile,
                  const std::string& assetsFolderPath,
-                 std::vector<scene::Node*>& roots) {
+                 std::vector<scene::Scene*>& scenes) {
 
     std::string ext = pathToFile.substr(pathToFile.find_last_of(".") + 1);
-    if (ext == "gltf")
+    if (ext == "gltf") {
       this->loader_ = new glTFLoader;
-    else
+    } else {
       return false;
+    }
 
-    this->loader_->load(pathToFile, assetsFolderPath, roots);
+    this->loader_->load(pathToFile, assetsFolderPath, scenes);
     return this->loader_->getError().empty();
   }
 
   void
-  Loader::load(std::string pathToFile, std::vector<scene::Node *> roots) {
+  Loader::load(std::string pathToFile, std::vector<scene::Scene *> scenes) {
 
-    this->load(pathToFile, "", roots);
+    this->load(pathToFile, "", scenes);
 
   }
 
@@ -244,11 +254,10 @@ namespace tiny3Dloader {
   void
   glTFLoader::load(const std::string& pathToFile,
                    const std::string& assetsFolderPath,
-                   std::vector<scene::Node*>& roots) {
+                   std::vector<scene::Scene*>& scenesResult) {
 
     std::ifstream stream(pathToFile);
     if (stream.fail()) {
-
       this->logMissingFile(pathToFile);
       return;
     }
@@ -256,39 +265,39 @@ namespace tiny3Dloader {
 
     this->assetsFolderPath_ = assetsFolderPath;
 
-    checkValidity();
+    if (!checkValidity()) return;
 
     uint nodeId = 0;
-    auto& sceneNodes = this->json_["nodes"];
+    auto& jsonNodes = this->json_["nodes"];
 
     // Allocates every nodes and add
     // them to the unordered map.
-    for (const auto& jsonNode : sceneNodes) {
-
+    for (const auto& jsonNode : jsonNodes) {
       scene::Node* node = new scene::Node;
       this->nodesMap_[nodeId] = node;
 
       ++nodeId;
-
     }
 
     nodeId = 0;
-    for (const auto& jsonNode : sceneNodes) {
-
+    for (const auto& jsonNode : jsonNodes) {
         processNode(nodeId);
         ++nodeId;
-
     }
 
     auto& scenes = this->json_["scenes"];
-    if (scenes.count("nodes")) {
+    for (const auto& jsonScene : scenes) {
+      if (jsonScene.count("nodes")) {
+        scene::Scene* scene = new scene::Scene;
+        if (jsonScene.count("name")) scene->name = jsonScene["name"];
 
-      for (uint nodeId : scenes["nodes"]) {
+        const auto& nodes = jsonScene["nodes"];
+        for (uint nodeId : nodes) {
+          scene->nodes.push_back(nodesMap_[nodeId]);
+        }
 
-        roots.push_back(nodesMap_[nodeId]);
-
+        scenesResult.push_back(scene);
       }
-
     }
 
   }
@@ -314,17 +323,12 @@ namespace tiny3Dloader {
 
     // Handles parenting by linking
     // the children to the current node.
-    if (jsonNode.find("children") != jsonNode.end()) {
-
+    if (jsonNode.count("children")) {
       for (const auto childId : jsonNode["children"]) {
-
         const auto& it = this->nodesMap_.find(childId);
         if (this->nodesMap_.find(childId) != this->nodesMap_.end()) {
-
           node->children.push_back(it->second);
-
         }
-
       }
 
     }
@@ -333,28 +337,20 @@ namespace tiny3Dloader {
   void
   glTFLoader::processTransform(uint nodeId) {
 
-    auto& parentNode = nodesMap_[nodeId];
+    auto& parent = nodesMap_[nodeId];
     auto& jsonNode = this->json_["nodes"][nodeId];
 
     if (jsonNode.count("translation")) {
-
-      parentNode->translation = jsonNode["translation"].get<std::vector<float>>();
-
+      parent->translation = jsonNode["translation"].get<std::vector<float>>();
     }
     if (jsonNode.count("rotation")) {
-
-      parentNode->rotation = jsonNode["rotation"].get<std::vector<float>>();
-
+      parent->rotation = jsonNode["rotation"].get<std::vector<float>>();
     }
     if (jsonNode.count("scale")) {
-
-      parentNode->scale = jsonNode["scale"].get<std::vector<float>>();
-
+      parent->scale = jsonNode["scale"].get<std::vector<float>>();
     }
     if (jsonNode.count("matrix")) {
-
-      parentNode->matrix = jsonNode["matrix"].get<std::vector<float>>();
-
+      parent->matrix = jsonNode["matrix"].get<std::vector<float>>();
     }
   }
 
@@ -370,7 +366,6 @@ namespace tiny3Dloader {
     this->debug("\tMesh: " + std::to_string(meshId));
 
     for (const auto& jsonPrimitive : jsonPrimitives) {
-
       scene::Mesh* mesh = new scene::Mesh;
       const auto &attributes = jsonPrimitive["attributes"];
 
@@ -382,10 +377,8 @@ namespace tiny3Dloader {
 
       // Processes all texcoords
       for (uint i = 0; attributes.find("TEXCOORD_" + i) != attributes.end(); ++i) {
-
         uint texcoordId = attributes["TEXCOORD_" + i].get<uint>();
         processAccessor(texcoordId, mesh->texcoords);
-
       }
 
       // Processes primitive indexes
@@ -393,7 +386,6 @@ namespace tiny3Dloader {
       processAccessor(indicesId, mesh->indices);
 
       parentNode->meshes.push_back(mesh);
-
     }
   }
 
@@ -433,50 +425,49 @@ namespace tiny3Dloader {
     uint numComponents = typeTable[accessor["type"]];
     uint elementSize = numComponents * bytePerComponent;
     uint totalSize = elementSize * count;
-    uint byteStride = (accessor.count("byteStride")) ? accessor["byteStride"].get<uint>() : elementSize;
+    uint byteStride = (accessor.count("byteStride")) ?
+                      accessor["byteStride"].get<uint>() : 0;
 
     uint bufferId = bufferView["buffer"].get<uint>();
-    uint offset = accessor["byteOffset"].get<uint>() + bufferView["byteOffset"].get<uint>();
+    uint offset = accessor["byteOffset"].get<uint>() +
+                  bufferView["byteOffset"].get<uint>();
+
 
     if (bufferView.count("target")) {
 
       uint target = bufferView["target"];
-      if (target == glTFLoader::Target::ELEMENT_ARRAY_BUFFER && byteStride != 0) {
-
-        std::string error = "BufferView '" + bufferViewId;
-        error += "': target is ELEMENT_ARRAY_BUFFER but byteStride is not null.";
+      if (target == glTFLoader::Target::ELEMENT_ARRAY_BUFFER &&
+            byteStride != 0) {
+        std::string error = "BufferView '" + std::to_string(bufferViewId);
+        error += "': target is ELEMENT_ARRAY_BUFFER but byteStride isn't null.";
         this->logError(error);
-        return;
 
+        return;
       }
 
     }
 
     if (this->binaryFiles_.find(bufferId) == this->binaryFiles_.end()) {
-
       if (!registerBuffer(bufferId)) return;
-
     }
 
     uint8_t * rawData = this->binaryFiles_[bufferId];
     if (rawData == nullptr) return;
 
     if (sizeof(T) < bytePerComponent) {
-
-      std::string error = "ComponentType: Bytes per component is " + bytePerComponent;
-      error += " but loader expected at most " + sizeof(T);
+      std::string error = "ComponentType: Bytes per component is ";
+      error += std::to_string(bytePerComponent);
+      error += " but loader expected at most " + std::to_string(sizeof(T));
       this->logError(error);
-      return;
 
+      return;
     }
 
     result.reserve(count);
-    if (byteStride == elementSize && sizeof(T) == bytePerComponent) {
-
+    if ((byteStride == 0 || byteStride == elementSize) &&
+          sizeof(T) == bytePerComponent) {
       copy(&rawData[0], &rawData[count], back_inserter(result));
-
-    }
-    else {
+    } else {
       for (size_t i = 0; i < count; ++i) {
         //memcpy(rawData + i, rawData + i * byteStride, elementSize);
 
@@ -484,19 +475,9 @@ namespace tiny3Dloader {
       }
     }
 
-    /*for (uint t = 0; t < result.size(); t++) {
-      std::cout << result[t] << ' ';
-      if (t % 3 == 0)
-        std::cout << std::endl;
-    }
-    std::cout << std::endl;
-    std::cout << std::endl;
-    std::cout << std::endl;*/
-
-    //std::string debugStr = "\t-> Accessing buffer " + bufferId;
-    /*debugStr += + "`: " + count;
-    debugStr += "|" + bytePerComponent;*/
-    this->debug("\t-> Accessing buffer '" + std::to_string(bufferId) + "' > " + std::to_string(count));
+    std::string debug = "\t-> Accessing buffer '" + std::to_string(bufferId);
+    debug += "' > " + std::to_string(count);
+    this->debug(debug);
   }
 
   bool
@@ -504,18 +485,15 @@ namespace tiny3Dloader {
 
     const auto& jsonBuffers = this->json_["buffers"];
     const auto& jsonBuffer = jsonBuffers[bufferId];
+    const auto& bufferUri = jsonBuffer["uri"].get<std::string>();
 
-    std::string uri = this->assetsFolderPath_ + jsonBuffer["uri"].get<std::string>();
-    std::ifstream ifs(uri, std::ios::in
-                      | std::ios::binary
-                      | std::ios::ate);
+    std::string uri = this->assetsFolderPath_ + bufferUri;
+    std::ifstream ifs(uri, std::ios::in | std::ios::binary | std::ios::ate);
 
     // TODO: Handle binary file not read
     if (ifs.fail()) {
-
       this->logMissingFile(uri);
       return false;
-
     }
 
     std::ifstream::pos_type fileSize = ifs.tellg();
@@ -529,28 +507,28 @@ namespace tiny3Dloader {
     return true;
   }
 
-  void
+  bool
   glTFLoader::checkValidity() {
 
     // Top level missing keys checks
-    checkMissingKey("scenes");
-    checkMissingKey("nodes");
-    checkMissingKey("accessors");
-    checkMissingKey("bufferViews");
-    checkMissingKey("buffers");
+    return checkMissingKey("scenes") && checkMissingKey("nodes") &&
+           checkMissingKey("accessors") && checkMissingKey("bufferViews") &&
+           checkMissingKey("buffers");
 
   }
 
-  void
+  bool
   glTFLoader::checkMissingKey(const std::string& key) {
 
     if (!this->json_.count(key)) {
       std::string error = "MissingKey: '" + key;
       error += "' not found.";
-
       this->logError(error);
+
+      return false;
     }
 
+    return true;
   }
 
 } // namespace tiny3Dloader
