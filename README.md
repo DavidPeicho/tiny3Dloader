@@ -4,15 +4,15 @@
 
 **Supported Formats:**
 * [glTF](https://github.com/KhronosGroup/glTF/tree/master/specification/1.0)
-  * Vertices, Normals, Texcoords and Indices 
-  * Node transforms
+  * vertices, normals, texcoords and indices 
+  * transforms
 * [obj](http://www.martinreddy.net/gfx/3d/OBJ.spec)
 
 **Tiny3DLoader** is greatly influenced by libraries such as [assimp](http://www.assimp.org/), [tinyobjloader](https://github.com/syoyo/tinyobjloader), or [tinygltfloader](https://github.com/syoyo/tinygltfloader)
 
 ## Design Goals
-* **Simple integration.** The whole code consists of two header files ```tiny-3D-loader.hpp``` and ```json.hpp``` (from [this repository](https://nlohmann.github.io/json/))
-* **Simple data-structure.** Loaded data are saved in an easy-to-use tree structure discribed in the [](data section).
+* **Simple integration.** The code consists of two header files ```tiny-3D-loader.hpp``` and ```json.hpp``` (from [this repository](https://nlohmann.github.io/json/))
+* **Simple data-structure.** Loaded data are saved in an easy-to-use tree structure discribed in the [Data Layout section](#data-layout).
 * **Lightweight.** Created to handle only few of the most common 3D format.
 
 ## Integration
@@ -29,6 +29,10 @@ Do not forget to enable C++11 compilation when compiling your code (required by 
 **Supported compilers:**
 * `GCC 4.9.3` or newer
 * `Clang 3.6.0` or newer
+
+## Data Layout
+
+
 
 ## Examples
 
@@ -52,4 +56,4 @@ $ cd bin && ./bin/check
 ## Contributing
 
 Contributions are appreciated. You can submit PR on the develop branch, that will later be merged to the master branch.
-We also use the [GitHub issues tracker](https://github.com/DavidPeicho/Tiny3DLoader/issues) for bugs an requests, feel free to post your questions/recommandations on it.
+We also use the [GitHub issues tracker](https://github.com/DavidPeicho/Tiny3DLoader/issues) for bugs and requests, feel free to post your questions/recommandations on it.
