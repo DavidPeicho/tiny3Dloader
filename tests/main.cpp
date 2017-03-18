@@ -1,3 +1,25 @@
+/*
+ * Copyright (c) 2017 David Peicho
+
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 #include "main.hpp"
 
 namespace tiny3Dloader {
@@ -16,6 +38,38 @@ namespace tiny3Dloader {
     std::vector<tiny3Dloader::scene::Scene*> scenes;
     tiny3Dloader::Importer importer;
     EXPECT_FALSE(importer.load("models/MissingBin.gltf", "models/", scenes));
+
+  }
+
+  TEST(BoxFile, CheckStatus) {
+
+    tests::testReturnStatus("models/Box.gltf");
+
+  }
+
+  TEST(BoxFile, TreeStructure) {
+
+    std::vector<tiny3Dloader::scene::Scene*> scenes;
+    tiny3Dloader::Importer importer;
+    bool status = importer.load("models/Box.gltf", "models/", scenes);
+
+    EXPECT_TRUE(status);
+
+    // Checks the number of scenes
+    EXPECT_EQ(1, scenes.size());
+    // Checks the number of nodes in the scene
+    const auto& scenePtr = scenes[0];
+    EXPECT_EQ(1, scenePtr->nodes.size());
+    // Checks the root node
+    const auto& rootPtr = scenePtr->nodes[0];
+    EXPECT_EQ(1, rootPtr->children.size());
+
+    for (const auto& nodePtr : rootPtr->children) {
+      EXPECT_EQ(0, nodePtr->children.size());
+    }
+
+    const auto& meshNode = rootPtr->children[0];
+    EXPECT_EQ(1, meshNode->meshes.size());
 
   }
 

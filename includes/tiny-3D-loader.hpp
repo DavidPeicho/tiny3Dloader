@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include <json.hpp>
+#include "json.hpp"
 
 #include <iostream>
 #include <fstream>
@@ -146,7 +146,7 @@ namespace tiny3Dloader {
 
     enum Target {
       ARRAY_BUFFER = 34962,
-      ELEMENT_ARRAY_BUFFER = 34963,
+      ELT_ARRAY_BUFFER = 34963,
     };
 
     public:
@@ -169,6 +169,10 @@ namespace tiny3Dloader {
       void
       processAccessor(uint accessorId, std::vector<T>& result);
 
+      template <typename T>
+      T
+      getValue(uint8_t* buffer, size_t stride, size_t eltSize, size_t i);
+
       bool
       registerBuffer(uint bufferId);
 
@@ -187,6 +191,9 @@ namespace tiny3Dloader {
   class Importer {
 
     public:
+      ~Importer();
+
+    public:
       bool
       load(const std::string& pathToFile, std::vector<scene::Scene*>& scenes);
 
@@ -196,6 +203,9 @@ namespace tiny3Dloader {
 
       void
       freeScene();
+
+      inline void
+      setDebug(bool flag) { if (loader_) loader_->setDebug(flag); }
 
     public:
       inline const std::string
@@ -207,9 +217,15 @@ namespace tiny3Dloader {
       }
 
     private:
-      Loader* loader_;
+      Loader* loader_ = nullptr;
 
   };
+
+  Importer::~Importer() {
+
+    freeScene();
+
+  }
 
   bool
   Importer::load(const std::string& pathToFile,
@@ -236,6 +252,16 @@ namespace tiny3Dloader {
   }
 
   void
+  Importer::freeScene() {
+
+    if (!loader_) return;
+
+    loader_->freeScene();
+    loader_ = nullptr;
+
+  }
+
+  void
   Loader::load(std::string pathToFile, std::vector<scene::Scene *> scenes) {
 
     this->load(pathToFile, "", scenes);
@@ -248,6 +274,7 @@ namespace tiny3Dloader {
     for (const auto& nodePtr : nodesMap_) {
       delete nodePtr.second;
     }
+    nodesMap_.clear();
 
   }
 
@@ -393,7 +420,7 @@ namespace tiny3Dloader {
   void
   glTFLoader::processAccessor(uint accessorId,  std::vector<T>& result) {
 
-    static std::map<std::string, glTFLoader::Type> typeTable = {
+    static std::map<std::string, glTFLoader::Type> TYPE_TABLE = {
       { "SCALAR", glTFLoader::Type::SCALAR },
       { "VEC2", glTFLoader::Type::VEC2 },
       { "VEC3", glTFLoader::Type::VEC3 },
@@ -403,7 +430,7 @@ namespace tiny3Dloader {
       { "MAT4", glTFLoader::Type::MAT4 },
     };
 
-    static std::map<uint, uint> typeToSize = {
+    static std::map<uint, uint> TYPE_TO_SIZE = {
       { ComponentType::BYTE, 1 },
       { ComponentType::UBYTE, 1 },
       { ComponentType::SHORT, 2 },
@@ -419,40 +446,29 @@ namespace tiny3Dloader {
 
     const auto& bufferView = jsonBufferViews[bufferViewId];
 
-    uint count = accessor["count"];
-    uint componentType = accessor["componentType"].get<uint>();
-    uint bytePerComponent = typeToSize[componentType];
-    uint numComponents = typeTable[accessor["type"]];
-    uint elementSize = numComponents * bytePerComponent;
-    uint totalSize = elementSize * count;
-    uint byteStride = (accessor.count("byteStride")) ?
-                      accessor["byteStride"].get<uint>() : 0;
+    size_t count = accessor["count"];
+    size_t componentType = accessor["componentType"].get<uint>();
+    size_t bytePerComponent = TYPE_TO_SIZE[componentType];
+    size_t numComponents = TYPE_TABLE[accessor["type"]];
+    size_t elementSize = numComponents * bytePerComponent;
+    size_t totalSize = elementSize * count;
+    size_t stride = accessor.count("byteStride") ? accessor["byteStride"]
+                                                     .get<uint>() : 0;
 
-    uint bufferId = bufferView["buffer"].get<uint>();
-    uint offset = accessor["byteOffset"].get<uint>() +
+    size_t bufferId = bufferView["buffer"].get<uint>();
+    size_t offset = accessor["byteOffset"].get<uint>() +
                   bufferView["byteOffset"].get<uint>();
 
 
     if (bufferView.count("target")) {
-
-      uint target = bufferView["target"];
-      if (target == glTFLoader::Target::ELEMENT_ARRAY_BUFFER &&
-            byteStride != 0) {
+      size_t target = bufferView["target"];
+      if (target == glTFLoader::Target::ELT_ARRAY_BUFFER && stride != 0) {
         std::string error = "BufferView '" + std::to_string(bufferViewId);
         error += "': target is ELEMENT_ARRAY_BUFFER but byteStride isn't null.";
-        this->logError(error);
-
+        logError(error);
         return;
       }
-
     }
-
-    if (this->binaryFiles_.find(bufferId) == this->binaryFiles_.end()) {
-      if (!registerBuffer(bufferId)) return;
-    }
-
-    uint8_t * rawData = this->binaryFiles_[bufferId];
-    if (rawData == nullptr) return;
 
     if (sizeof(T) < bytePerComponent) {
       std::string error = "ComponentType: Bytes per component is ";
@@ -463,15 +479,24 @@ namespace tiny3Dloader {
       return;
     }
 
+    if (this->binaryFiles_.find(bufferId) == this->binaryFiles_.end()) {
+      if (!registerBuffer(bufferId)) return;
+    }
+
+    uint8_t * rawData = this->binaryFiles_[bufferId];
+    if (rawData == nullptr) return;
+
+    stride = (stride) ? stride : elementSize;
     result.reserve(count);
-    if ((byteStride == 0 || byteStride == elementSize) &&
+
+    if ((stride == 0 || stride == elementSize) &&
           sizeof(T) == bytePerComponent) {
-      copy(&rawData[0], &rawData[count], back_inserter(result));
+      T const* rawDataTyped = reinterpret_cast<const T*>(rawData + offset);
+      copy(rawDataTyped, rawDataTyped + count, back_inserter(result));
     } else {
       for (size_t i = 0; i < count; ++i) {
-        //memcpy(rawData + i, rawData + i * byteStride, elementSize);
-
-        // result[i * byteStride]
+        T val = getValue<T>(rawData + offset, stride, elementSize, i);
+        result.push_back(val);
       }
     }
 
@@ -505,6 +530,16 @@ namespace tiny3Dloader {
 
     this->binaryFiles_[bufferId] = reinterpret_cast<uint8_t*>(buffer);
     return true;
+  }
+
+  template <typename T>
+  T
+  glTFLoader::getValue(uint8_t* buffer, size_t stride, size_t eltSize, size_t i) {
+
+    T val = T();
+    memcpy(&val, buffer + i * stride, eltSize);
+
+    return val;
   }
 
   bool
