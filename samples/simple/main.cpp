@@ -26,7 +26,7 @@ int main(int argc, char** argv)  {
 
   std::vector<tiny3Dloader::scene::Scene*> scenes;
   tiny3Dloader::Importer importer;
-  importer.setDebug(true);
+  importer.setDebug(false);
 
   bool success = importer.load("models/Box.gltf", "models/", scenes);
 

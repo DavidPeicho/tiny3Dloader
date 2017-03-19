@@ -34,12 +34,16 @@ namespace tiny3Dloader {
 
   namespace scene {
 
-    struct Mesh {
-      std::string         name;
+    struct Primitive {
       std::vector<float>  vertices;
       std::vector<float>  normals;
       std::vector<float>  texcoords;
       std::vector<uint>   indices;
+    };
+
+    struct Mesh {
+      std::string             name;
+      std::vector<Primitive*> primitives;
     };
 
     struct Node {
@@ -167,11 +171,12 @@ namespace tiny3Dloader {
 
       template <typename T>
       void
-      processAccessor(uint accessorId, std::vector<T>& result);
+      processAccessor(const nlohmann::json& json, const char* key,
+                      std::vector<T>& result);
 
       template <typename T>
       T
-      getValue(uint8_t* buffer, size_t stride, size_t eltSize, size_t i);
+      extractData(uint8_t* buffer, size_t stride, size_t eltSize, size_t i);
 
       bool
       registerBuffer(uint bufferId);
@@ -338,10 +343,6 @@ namespace tiny3Dloader {
 
     debug("Node: " + std::to_string(nodeId) + " [" + node->name + "]");
 
-    if (jsonNode.count("name")) {
-      node->name = jsonNode["name"];
-    }
-
     if (jsonNode.count("mesh")) {
       processMesh(nodeId, jsonNode["mesh"]);
     }
@@ -392,33 +393,35 @@ namespace tiny3Dloader {
 
     this->debug("\tMesh: " + std::to_string(meshId));
 
+    scene::Mesh* mesh = new scene::Mesh;
     for (const auto& jsonPrimitive : jsonPrimitives) {
-      scene::Mesh* mesh = new scene::Mesh;
       const auto &attributes = jsonPrimitive["attributes"];
 
-      uint normalId = attributes["NORMAL"].get<uint>();
-      uint positionId = attributes["POSITION"].get<uint>();
+      scene::Primitive* primitive = new scene::Primitive;
 
-      processAccessor(normalId, mesh->normals);
-      processAccessor(positionId, mesh->vertices);
+      processAccessor(attributes, "NORMAL", primitive->normals);
+      processAccessor(attributes, "POSITION", primitive->vertices);
 
       // Processes all texcoords
-      for (uint i = 0; attributes.find("TEXCOORD_" + i) != attributes.end(); ++i) {
-        uint texcoordId = attributes["TEXCOORD_" + i].get<uint>();
-        processAccessor(texcoordId, mesh->texcoords);
+      std::string texcoordKey = "TEXCOORD_0";
+      size_t texcoordIdx = 0;
+      while (attributes.count(texcoordKey.c_str())) {
+        processAccessor(attributes, texcoordKey.c_str(), primitive->texcoords);
+        texcoordKey = "TEXCOORD_" + std::to_string(++texcoordIdx);
       }
 
       // Processes primitive indexes
-      uint indicesId = jsonPrimitive["indices"].get<uint>();
-      processAccessor(indicesId, mesh->indices);
+      processAccessor(jsonPrimitive, "indices", primitive->indices);
 
-      parentNode->meshes.push_back(mesh);
+      mesh->primitives.push_back(primitive);
     }
+    parentNode->meshes.push_back(mesh);
   }
 
   template <typename T>
   void
-  glTFLoader::processAccessor(uint accessorId,  std::vector<T>& result) {
+  glTFLoader::processAccessor(const nlohmann::json& json, const char* key,
+                              std::vector<T>& result) {
 
     static std::map<std::string, glTFLoader::Type> TYPE_TABLE = {
       { "SCALAR", glTFLoader::Type::SCALAR },
@@ -438,9 +441,12 @@ namespace tiny3Dloader {
       { ComponentType::FLOAT, 4 }
     };
 
+    if (!json.count(key)) return;
+
     const auto& jsonAccessors = this->json_["accessors"];
     const auto& jsonBufferViews = this->json_["bufferViews"];
 
+    size_t accessorId = json[key];
     const auto& accessor = jsonAccessors[accessorId];
     uint bufferViewId = accessor["bufferView"];
 
@@ -457,7 +463,7 @@ namespace tiny3Dloader {
 
     size_t bufferId = bufferView["buffer"].get<uint>();
     size_t offset = accessor["byteOffset"].get<uint>() +
-                  bufferView["byteOffset"].get<uint>();
+                    bufferView["byteOffset"].get<uint>();
 
 
     if (bufferView.count("target")) {
@@ -475,7 +481,6 @@ namespace tiny3Dloader {
       error += std::to_string(bytePerComponent);
       error += " but loader expected at most " + std::to_string(sizeof(T));
       this->logError(error);
-
       return;
     }
 
@@ -487,15 +492,15 @@ namespace tiny3Dloader {
     if (rawData == nullptr) return;
 
     stride = (stride) ? stride : elementSize;
-    result.reserve(count);
+    result.reserve(count * numComponents);
 
     if ((stride == 0 || stride == elementSize) &&
           sizeof(T) == bytePerComponent) {
       T const* rawDataTyped = reinterpret_cast<const T*>(rawData + offset);
-      copy(rawDataTyped, rawDataTyped + count, back_inserter(result));
+      copy(rawDataTyped, rawDataTyped + count * numComponents, back_inserter(result));
     } else {
-      for (size_t i = 0; i < count; ++i) {
-        T val = getValue<T>(rawData + offset, stride, elementSize, i);
+      for (size_t i = 0; i < count * numComponents; ++i) {
+        T val = extractData<T>(rawData + offset, stride, elementSize, i);
         result.push_back(val);
       }
     }
@@ -515,7 +520,6 @@ namespace tiny3Dloader {
     std::string uri = this->assetsFolderPath_ + bufferUri;
     std::ifstream ifs(uri, std::ios::in | std::ios::binary | std::ios::ate);
 
-    // TODO: Handle binary file not read
     if (ifs.fail()) {
       this->logMissingFile(uri);
       return false;
@@ -525,8 +529,14 @@ namespace tiny3Dloader {
     char* buffer = new char[fileSize];
 
     ifs.seekg(0, std::ios::beg);
-    // TODO: Handle read fail
     ifs.read(buffer, fileSize);
+
+    if (!ifs) {
+      std::string error = "buffer `" + bufferUri + "'";
+      error += ": read failed.";
+      logError(error);
+      return false;
+    }
 
     this->binaryFiles_[bufferId] = reinterpret_cast<uint8_t*>(buffer);
     return true;
@@ -534,7 +544,8 @@ namespace tiny3Dloader {
 
   template <typename T>
   T
-  glTFLoader::getValue(uint8_t* buffer, size_t stride, size_t eltSize, size_t i) {
+  glTFLoader::extractData(uint8_t* buffer, size_t stride, size_t eltSize,
+                          size_t i) {
 
     T val = T();
     memcpy(&val, buffer + i * stride, eltSize);

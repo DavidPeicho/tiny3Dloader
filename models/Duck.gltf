@@ -20,6 +20,7 @@
     ],
     "nodes": [
         {
+            "name": "node_0",
             "matrix": [
                 -0.9546916484832764,
                 0.2181433141231537,
@@ -40,6 +41,7 @@
             ]
         },
         {
+            "name": "node_1",
             "matrix": [
                 -0.7289686799049377,
                 0.0,
@@ -61,9 +63,8 @@
             "camera": 0
         },
         {
-            "meshes": [
-                0
-            ],
+            "name": "node_2",
+            "mesh": 0,
             "matrix": [
                 1.0,
                 0.0,
@@ -360,7 +361,7 @@
     "buffers": [
         {
             "byteLength": 102040,
-            "uri": "0.bin",
+            "uri": "Duck.bin",
             "type": "arraybuffer"
         }
     ]

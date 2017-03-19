@@ -71,6 +71,7 @@ namespace tiny3Dloader {
     const auto& meshNode = rootPtr->children[0];
     EXPECT_EQ(1, meshNode->meshes.size());
 
+    EXPECT_EQ(1, meshNode->meshes[0]->primitives.size());
   }
 
   TEST(LanternFile, CheckStatus) {
@@ -95,6 +96,12 @@ namespace tiny3Dloader {
     // Checks the root node
     const auto& rootPtr = scenePtr->nodes[0];
     EXPECT_EQ(3, rootPtr->children.size());
+
+    for (size_t i = 0; i < 3; ++i) {
+      const auto& node = rootPtr->children[i];
+      EXPECT_EQ(1, node->meshes.size());
+      EXPECT_EQ(1, node->meshes[0]->primitives.size());
+    }
 
     for (const auto& nodePtr : rootPtr->children) {
       EXPECT_EQ(0, nodePtr->children.size());
@@ -157,6 +164,9 @@ namespace tiny3Dloader {
     EXPECT_EQ(0, rootPtr->children.size());
     EXPECT_EQ("BoomBox", rootPtr->name);
 
+    EXPECT_EQ(1, rootPtr->meshes.size());
+    EXPECT_EQ(1, rootPtr->meshes[0]->primitives.size());
+
   }
 
   TEST(BoomBoxFile, Transforms) {
@@ -183,6 +193,78 @@ namespace tiny3Dloader {
     EXPECT_TRUE(std::equal(t0.begin(), t0.end(), expectedT0.begin(),
                            floatComparator));
     EXPECT_TRUE(std::equal(s0.begin(), s0.end(), expectedS0.begin(),
+                           floatComparator));
+
+  }
+
+  TEST(DuckFile, CheckStatus) {
+
+    tests::testReturnStatus("models/Duck.gltf");
+
+  }
+
+  TEST(DuckFile, TreeStructure) {
+
+    std::vector<tiny3Dloader::scene::Scene*> scenes;
+    tiny3Dloader::Importer importer;
+    importer.load("models/Duck.gltf", "models/", scenes);
+
+    EXPECT_EQ(1, scenes.size());
+    EXPECT_EQ(3, scenes[0]->nodes.size());
+
+    for (const auto& nodePtr : scenes[0]->nodes) {
+      EXPECT_EQ(0, nodePtr->children.size());
+    }
+
+    EXPECT_EQ(1, scenes[0]->nodes[0]->meshes.size());
+    EXPECT_EQ(1, scenes[0]->nodes[0]->meshes[0]->primitives.size());
+  }
+
+  TEST(DuckFile, Transforms) {
+
+    std::vector<tiny3Dloader::scene::Scene*> scenes;
+    tiny3Dloader::Importer importer;
+    importer.load("models/Duck.gltf", "models/", scenes);
+
+    std::vector<float> expectedT0 = {
+      -0.9546916484832764f, 0.2181433141231537f, -0.2024286538362503f, 0.0f,
+      0.014671952463686468f, 0.7138853073120117f, 0.7001089453697205f, 0.0f,
+      0.2972349226474762f, 0.6654181480407715f, -0.6847409009933472f, 0.0f,
+      148.6540069580078f, 183.6720123291016f, -292.1790161132813f, 1.0f
+    };
+
+    std::vector<float> expectedT1 = {
+      -0.7289686799049377f, 0.0f, -0.6845470666885376f, 0.0f,
+      -0.4252049028873444f, 0.7836934328079224f, 0.4527972936630249f, 0.0f,
+      0.5364750623703003f, 0.6211478114128113f, -0.571287989616394f, 0.0f,
+      400.1130065917969f, 463.2640075683594f, -431.0780334472656f, 1.0f
+    };
+
+    std::vector<float> expectedT2 = {
+      1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+      0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f
+    };
+
+    const auto& node0Ptr = scenes[0]->nodes[0];
+    const auto& node1Ptr = scenes[0]->nodes[1];
+    const auto& node2Ptr = scenes[0]->nodes[2];
+
+    const auto& t2 = node0Ptr->matrix;
+    const auto& t1 = node1Ptr->matrix;
+    const auto& t0 = node2Ptr->matrix;
+
+    const auto& floatComparator = [](float a, float b) -> bool {
+
+      if (fabs(a - b) <= 0.01f) return true;
+      return false;
+
+    };
+
+    EXPECT_TRUE(std::equal(t0.begin(), t0.end(), expectedT0.begin(),
+                           floatComparator));
+    EXPECT_TRUE(std::equal(t1.begin(), t1.end(), expectedT1.begin(),
+                           floatComparator));
+    EXPECT_TRUE(std::equal(t2.begin(), t2.end(), expectedT2.begin(),
                            floatComparator));
 
   }

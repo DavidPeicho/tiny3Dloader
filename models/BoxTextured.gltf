@@ -62,9 +62,7 @@
             ]
         },
         {
-            "meshes": [
-                0
-            ],
+            "mesh": 0,
             "matrix": [
                 1.0,
                 0.0,
@@ -316,7 +314,7 @@
     "buffers": [
         {
             "byteLength": 840,
-            "uri": "0.bin",
+            "uri": "BoxTextured.bin",
             "type": "arraybuffer"
         }
     ]
