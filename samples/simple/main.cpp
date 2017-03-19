@@ -24,18 +24,16 @@
 
 int main(int argc, char** argv)  {
 
-  std::vector<tiny3Dloader::scene::Scene*> scenes;
+  std::vector<std::shared_ptr<tiny3Dloader::scene::Scene>> scenes;
   tiny3Dloader::Importer importer;
-  importer.setDebug(false);
+  importer.setDebug(true);
 
-  bool success = importer.load("models/Box.gltf", "models/", scenes);
+  bool success = importer.load("models/Duck.gltf", "models/", scenes);
 
-  if (!success)
-    std::cerr << importer.getError() << std::endl;
-  else
-    std::cout << "Loading Lantern.gltf file success..." << std::endl;
-
+  if (!success) std::cerr << importer.getError() << std::endl;
   auto& scene = scenes[0];
+
+  importer.freeScene();
 
   return 0;
 

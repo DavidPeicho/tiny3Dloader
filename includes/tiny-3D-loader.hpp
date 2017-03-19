@@ -42,6 +42,8 @@ namespace tiny3Dloader {
     };
 
     struct Mesh {
+      ~Mesh();
+
       std::string             name;
       std::vector<Primitive*> primitives;
     };
@@ -60,19 +62,34 @@ namespace tiny3Dloader {
     };
 
     struct Scene {
+      ~Scene();
+
       std::string         name;
       std::vector<Node*>  nodes;
     };
 
+    Mesh::~Mesh() {
+
+      for (const auto& primitivePtr : primitives) {
+        delete primitivePtr;
+      }
+      primitives.clear();
+
+    }
+
     Node::~Node() {
 
-      for (const auto& meshPtr : meshes) {
-        delete meshPtr;
-      }
-
+      // The meshes are not freed from the node,
+      // but rather from the map containing every meshes.
       meshes.clear();
       children.clear();
 
+    }
+
+    Scene::~Scene() {
+      // The nodes are not freed from the scene,
+      // but rather from the map containing every nodes.
+      nodes.clear();
     }
 
   } // namespace scene
@@ -80,15 +97,15 @@ namespace tiny3Dloader {
   class Loader {
 
     public:
-      virtual void
-      load(std::string pathToFile, std::vector<scene::Scene*> scenes);
+      typedef std::vector<std::shared_ptr<scene::Scene>> ScenesList;
 
+    public:
       virtual void
       load(const std::string& pathToFile,
            const std::string& assetsFolderPath,
-           std::vector<scene::Scene*>& scenes) = 0;
+           ScenesList& scenes) = 0;
 
-      void
+      virtual void
       freeScene();
 
       inline void
@@ -119,10 +136,11 @@ namespace tiny3Dloader {
       }
 
     protected:
-      std::string                             assetsFolderPath_;
-      std::string                             errorStr_;
+      std::string                               assetsFolderPath_;
+      std::string                               errorStr_;
 
-      std::unordered_map<uint, scene::Node*>  nodesMap_;
+      std::unordered_map<size_t, scene::Node*>  nodesMap_;
+      std::unordered_map<size_t, scene::Mesh*>  meshesMap_;
 
     private:
       bool                                    debug_ = false;
@@ -154,10 +172,16 @@ namespace tiny3Dloader {
     };
 
     public:
+      typedef std::vector<std::shared_ptr<scene::Scene>> ScenesList;
+
+    public:
       void
       load(const std::string& pathToFile,
            const std::string& assetsFolderPath,
-           std::vector<scene::Scene*>& scenes) override;
+           ScenesList& scenes) override;
+
+      void
+      freeScene() override;
 
     private:
       void
@@ -196,21 +220,24 @@ namespace tiny3Dloader {
   class Importer {
 
     public:
+      typedef std::vector<std::shared_ptr<scene::Scene>> ScenesList;
+
+    public:
       ~Importer();
 
     public:
       bool
-      load(const std::string& pathToFile, std::vector<scene::Scene*>& scenes);
+      load(const std::string& pathToFile, ScenesList& scenes);
 
       bool
       load(const std::string& pathToFile, const std::string& assetsFolderPath,
-           std::vector<scene::Scene*>& scenes);
+           ScenesList& scenes);
 
       void
       freeScene();
 
       inline void
-      setDebug(bool flag) { if (loader_) loader_->setDebug(flag); }
+      setDebug(bool flag) { this->debug_ = flag; }
 
     public:
       inline const std::string
@@ -222,7 +249,8 @@ namespace tiny3Dloader {
       }
 
     private:
-      Loader* loader_ = nullptr;
+      std::shared_ptr<Loader> loader_ = nullptr;
+      bool                    debug_  = false;
 
   };
 
@@ -234,7 +262,7 @@ namespace tiny3Dloader {
 
   bool
   Importer::load(const std::string& pathToFile,
-                 std::vector<scene::Scene*>& scenes) {
+                 Importer::ScenesList& scenes) {
 
     return load(pathToFile, "", scenes);
 
@@ -243,16 +271,18 @@ namespace tiny3Dloader {
   bool
   Importer::load(const std::string& pathToFile,
                  const std::string& assetsFolderPath,
-                 std::vector<scene::Scene*>& scenes) {
+                 Importer::ScenesList& scenes) {
 
     std::string ext = pathToFile.substr(pathToFile.find_last_of(".") + 1);
     if (ext == "gltf") {
-      this->loader_ = new glTFLoader;
+      this->loader_ = std::make_shared<glTFLoader>();
     } else {
       return false;
     }
 
+    this->loader_->setDebug(this->debug_);
     this->loader_->load(pathToFile, assetsFolderPath, scenes);
+
     return this->loader_->getError().empty();
   }
 
@@ -267,32 +297,40 @@ namespace tiny3Dloader {
   }
 
   void
-  Loader::load(std::string pathToFile, std::vector<scene::Scene *> scenes) {
-
-    this->load(pathToFile, "", scenes);
-
-  }
-
-  void
   Loader::freeScene() {
 
-    for (const auto& nodePtr : nodesMap_) {
-      delete nodePtr.second;
+    this->debug("Begins memory freeing...");
+
+    for (const auto& n : nodesMap_) {
+      delete n.second;
+      std::string debug = "\tNode '" + std::to_string(n.first) + "' freed";
+      this->debug(debug);
+    }
+    for (const auto& m : meshesMap_) {
+      delete m.second;
+      std::string debug = "\tMesh '" + std::to_string(m.first) + "' freed";
+      this->debug(debug);
     }
     nodesMap_.clear();
+    meshesMap_.clear();
+
+    this->debug("Ends memory freeing..");
 
   }
 
   void
   glTFLoader::load(const std::string& pathToFile,
                    const std::string& assetsFolderPath,
-                   std::vector<scene::Scene*>& scenesResult) {
+                   Loader::ScenesList& scenesResult) {
 
     std::ifstream stream(pathToFile);
     if (stream.fail()) {
       this->logMissingFile(pathToFile);
       return;
     }
+
+    this->debug("Tiny3DLoader: Debug Trace");
+
     stream >> this->json_;
 
     this->assetsFolderPath_ = assetsFolderPath;
@@ -303,7 +341,7 @@ namespace tiny3Dloader {
     auto& jsonNodes = this->json_["nodes"];
 
     // Allocates every nodes and add
-    // them to the unordered map.
+    // them to the nodes cache.
     for (const auto& jsonNode : jsonNodes) {
       scene::Node* node = new scene::Node;
       this->nodesMap_[nodeId] = node;
@@ -320,7 +358,7 @@ namespace tiny3Dloader {
     auto& scenes = this->json_["scenes"];
     for (const auto& jsonScene : scenes) {
       if (jsonScene.count("nodes")) {
-        scene::Scene* scene = new scene::Scene;
+        auto scene = std::make_shared<scene::Scene>();
         if (jsonScene.count("name")) scene->name = jsonScene["name"];
 
         const auto& nodes = jsonScene["nodes"];
@@ -332,6 +370,20 @@ namespace tiny3Dloader {
       }
     }
 
+    this->debug("Tiny3DLoader: End Trace");
+  }
+
+  void
+  glTFLoader::freeScene() {
+
+
+    for (const auto& elt : this->binaryFiles_) {
+      delete[] elt.second;
+    }
+    binaryFiles_.clear();
+
+    Loader::freeScene();
+
   }
 
   void
@@ -341,7 +393,7 @@ namespace tiny3Dloader {
     auto& node = nodesMap_[nodeId];
     node->name = (jsonNode.count("name")) ? jsonNode["name"] : "";
 
-    debug("Node: " + std::to_string(nodeId) + " [" + node->name + "]");
+    debug("\tNode: " + std::to_string(nodeId) + " [" + node->name + "]");
 
     if (jsonNode.count("mesh")) {
       processMesh(nodeId, jsonNode["mesh"]);
@@ -388,10 +440,18 @@ namespace tiny3Dloader {
     // TODO: Remove duplicate meshes allocated severeal times
     auto& parentNode = nodesMap_[nodeId];
 
+    // Checks the meshes cache to avoid making
+    // multiple allocations for the same mesh
+    const auto& mapIt = this->meshesMap_.find(meshId);
+    if (mapIt != this->meshesMap_.end()) {
+      parentNode->meshes.push_back(mapIt->second);
+      return;
+    }
+
     auto& jsonMesh = this->json_["meshes"][meshId];
     auto& jsonPrimitives = jsonMesh["primitives"];
 
-    this->debug("\tMesh: " + std::to_string(meshId));
+    this->debug("\t\tMesh: " + std::to_string(meshId));
 
     scene::Mesh* mesh = new scene::Mesh;
     for (const auto& jsonPrimitive : jsonPrimitives) {
@@ -416,6 +476,7 @@ namespace tiny3Dloader {
       mesh->primitives.push_back(primitive);
     }
     parentNode->meshes.push_back(mesh);
+    this->meshesMap_[meshId] = mesh;
   }
 
   template <typename T>

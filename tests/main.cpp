@@ -27,7 +27,7 @@ namespace tiny3Dloader {
   void
   tests::testReturnStatus(const char* file) {
 
-    std::vector<tiny3Dloader::scene::Scene*> scenes;
+    std::vector<std::shared_ptr<tiny3Dloader::scene::Scene>> scenes;
     tiny3Dloader::Importer importer;
     EXPECT_TRUE(importer.load(file, "models/", scenes));
 
@@ -35,7 +35,7 @@ namespace tiny3Dloader {
 
   TEST(FilesValidity, MissingBinaryFile) {
 
-    std::vector<tiny3Dloader::scene::Scene*> scenes;
+    std::vector<std::shared_ptr<tiny3Dloader::scene::Scene>> scenes;
     tiny3Dloader::Importer importer;
     EXPECT_FALSE(importer.load("models/MissingBin.gltf", "models/", scenes));
 
@@ -49,7 +49,7 @@ namespace tiny3Dloader {
 
   TEST(BoxFile, TreeStructure) {
 
-    std::vector<tiny3Dloader::scene::Scene*> scenes;
+    std::vector<std::shared_ptr<tiny3Dloader::scene::Scene>> scenes;
     tiny3Dloader::Importer importer;
     bool status = importer.load("models/Box.gltf", "models/", scenes);
 
@@ -82,7 +82,7 @@ namespace tiny3Dloader {
 
   TEST(LanternFile, TreeStructure) {
 
-    std::vector<tiny3Dloader::scene::Scene*> scenes;
+    std::vector<std::shared_ptr<tiny3Dloader::scene::Scene>> scenes;
     tiny3Dloader::Importer importer;
     bool status = importer.load("models/Lantern.gltf", "models/", scenes);
 
@@ -111,7 +111,7 @@ namespace tiny3Dloader {
 
   TEST(LanternFile, Transforms) {
 
-    std::vector<tiny3Dloader::scene::Scene*> scenes;
+    std::vector<std::shared_ptr<tiny3Dloader::scene::Scene>> scenes;
     tiny3Dloader::Importer importer;
     importer.load("models/Lantern.gltf", "models/", scenes);
 
@@ -153,7 +153,7 @@ namespace tiny3Dloader {
 
   TEST(BoomBoxFile, TreeStructure) {
 
-    std::vector<tiny3Dloader::scene::Scene*> scenes;
+    std::vector<std::shared_ptr<tiny3Dloader::scene::Scene>> scenes;
     tiny3Dloader::Importer importer;
     importer.load("models/BoomBox.gltf", "models/", scenes);
 
@@ -171,7 +171,7 @@ namespace tiny3Dloader {
 
   TEST(BoomBoxFile, Transforms) {
 
-    std::vector<tiny3Dloader::scene::Scene*> scenes;
+    std::vector<std::shared_ptr<tiny3Dloader::scene::Scene>> scenes;
     tiny3Dloader::Importer importer;
     importer.load("models/BoomBox.gltf", "models/", scenes);
 
@@ -205,7 +205,7 @@ namespace tiny3Dloader {
 
   TEST(DuckFile, TreeStructure) {
 
-    std::vector<tiny3Dloader::scene::Scene*> scenes;
+    std::vector<std::shared_ptr<tiny3Dloader::scene::Scene>> scenes;
     tiny3Dloader::Importer importer;
     importer.load("models/Duck.gltf", "models/", scenes);
 
@@ -222,7 +222,7 @@ namespace tiny3Dloader {
 
   TEST(DuckFile, Transforms) {
 
-    std::vector<tiny3Dloader::scene::Scene*> scenes;
+    std::vector<std::shared_ptr<tiny3Dloader::scene::Scene>> scenes;
     tiny3Dloader::Importer importer;
     importer.load("models/Duck.gltf", "models/", scenes);
 
