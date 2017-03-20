@@ -7,6 +7,7 @@
   * vertices, normals, texcoords and indices 
   * transforms
 * [obj](http://www.martinreddy.net/gfx/3d/OBJ.spec)
+  * work in progress
 
 **Tiny3DLoader** is greatly influenced by libraries such as [assimp](http://www.assimp.org/), [tinyobjloader](https://github.com/syoyo/tinyobjloader), or [tinygltfloader](https://github.com/syoyo/tinygltfloader)
 
@@ -14,6 +15,8 @@
 * **Simple integration.** The code consists of two header files ```tiny-3D-loader.hpp``` and ```json.hpp``` (from [this repository](https://nlohmann.github.io/json/))
 * **Simple data-structure.** Loaded data are saved in an easy-to-use tree structure discribed in the [Data Layout section](#data-layout).
 * **Lightweight.** Created to handle only few of the most common 3D format.
+
+The loader is also memory leaks free. We use [Valgrind](http://valgrind.org/) for sanity check, and only the **still reachable** blocks from the **STL** are reported.
 
 ## Integration
 Both files to include are located in the ```includes``` directory.
@@ -32,7 +35,9 @@ Do not forget to enable C++11 compilation when compiling your code (required by 
 
 ## Data Layout
 
-
+<p align="center">
+  <img src="https://cloud.githubusercontent.com/assets/8783766/24086250/672df3d4-0d0c-11e7-99eb-1ada0eabf0e2.png">
+</p>
 
 ## Examples
 
@@ -47,6 +52,8 @@ $ cd bin && ./bin/check
 ## TODO
 
 * glTF
+  * [X] vertices, normals, indices
+  * [X] transforms
   * [ ] materials
   * [ ] animations
 * obj
