@@ -20,21 +20,19 @@
  * SOFTWARE.
  */
 
+#pragma once
+
+#include <cmath>
+
 #include <tiny-3D-loader.hpp>
+#include <gtest/gtest.h>
 
-int main(int argc, char** argv)  {
+namespace tiny3Dloader
+{
+  namespace tests {
 
-  std::vector<std::shared_ptr<tiny3Dloader::scene::Scene>> scenes;
-  tiny3Dloader::Importer importer;
-  importer.setDebug(true);
+    void
+    testReturnStatus(const char* file);
 
-  bool success = importer.load("models/Duck.gltf", "models/", scenes);
-
-  if (!success) std::cerr << importer.getError() << std::endl;
-  auto& scene = scenes[0];
-
-  importer.freeScene();
-
-  return 0;
-
-}
+  } // namespace tests
+} // namespace tiny3Dloader
