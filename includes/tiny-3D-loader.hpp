@@ -32,13 +32,128 @@
 
 namespace tiny3Dloader {
 
+#define IS_SPACE(x) (((x) == ' ') || ((x) == '\t'))
+
+  // Handles getLine with various end of line character.
+  // See:
+  // http://stackoverflow.com/questions/6089231/getting-std-ifstream-to-handle-lf-cr-and-crlf
+  static std::istream&
+  safeGetline(std::istream& is, std::string& t) {
+    t.clear();
+
+    // The characters in the stream are read one-by-one using a std::streambuf.
+    // That is faster than reading them one-by-one using the std::istream.
+    // Code that uses streambuf this way must be guarded by a sentry object.
+    // The sentry object performs various tasks,
+    // such as thread synchronization and updating the stream state.
+
+    std::istream::sentry se(is, true);
+    std::streambuf* sb = is.rdbuf();
+
+    for(;;) {
+      int c = sb->sbumpc();
+      switch (c) {
+        case '\n':
+          return is;
+        case '\r':
+          if(sb->sgetc() == '\n')
+            sb->sbumpc();
+          return is;
+        case EOF:
+          // Also handle the case when the last line has no line ending
+          if(t.empty())
+            is.setstate(std::ios::eofbit);
+          return is;
+        default:
+          t += (char)c;
+      }
+    }
+  }
+
+  static std::string&
+  leftTrim(std::string& s, const char* t = " \t\n\r\f\v") {
+    s.erase(0, s.find_first_not_of(t));
+    return s;
+  }
+
+  static std::string&
+  rightTrim(std::string& s, const char* t = " \t\n\r\f\v") {
+    s.erase(s.find_last_not_of(t) + 1);
+    return s;
+  }
+
+  static std::string&
+  leftRightTrim(std::string& s, const char* t = " \t\n\r\f\v") {
+    return rightTrim(leftTrim(s));
+  }
+
+  static size_t
+  countTokens(std::string str) {
+
+    if (str.size() == 0) return 0;
+
+    size_t count = 0;
+    for (size_t i = 0; i < str.size() - 1; ++i) {
+      if (!IS_SPACE(str[i]) &&
+        (IS_SPACE(str[i + 1]) || i + 1 == str.size() - 1)) {
+        ++count;
+      }
+    }
+    return count;
+
+  }
+
+  static std::string
+  nextToken(std::string& line, const char* anyOf = " \t\r\n") {
+
+    std::size_t beginIdx = line.find_first_not_of(anyOf);
+    if (beginIdx == std::string::npos) {
+      line.clear();
+      return std::string("");
+    }
+
+    std::size_t idx = line.find_first_of(anyOf, beginIdx);
+    std::string result;
+    if (idx == std::string::npos) {
+      result = line.substr(beginIdx, line.size() - beginIdx);
+      line.clear();
+    } else {
+      result = line.substr(beginIdx, idx - beginIdx);
+      line.erase(0, idx);
+    }
+
+    return result;
+
+  }
+
+  static bool
+  isNumber(std::string& token) {
+
+    size_t i = 0;
+    if (token[0] == '-') {
+      ++i;
+    }
+    if (token[i] == '.') return false;
+
+    bool pointFound = false;
+    for ( ; i < token.size(); ++i) {
+      if (token[i] != '.' && !std::isdigit(token[i])) {
+        return false;
+      } else if (token[i] == '.') {
+        if (pointFound) return false;
+        pointFound = true;
+      }
+    }
+
+  }
+
   namespace scene {
 
     struct Primitive {
-      std::vector<float>  vertices;
-      std::vector<float>  normals;
-      std::vector<float>  texcoords;
-      std::vector<uint>   indices;
+      std::vector<float>        vertices;
+      std::vector<float>        normals;
+      std::vector<float>        texcoords;
+      std::vector<unsigned int> indices;
     };
 
     struct Mesh {
@@ -126,7 +241,7 @@ namespace tiny3Dloader {
 
       inline void
       logError(const std::string& errorMsg) {
-        errorStr_ += "Error: ";
+        errorStr_ += "Tiny3DLoader: Error: ";
         errorStr_ += errorMsg + "\n";
       }
 
@@ -217,6 +332,54 @@ namespace tiny3Dloader {
 
   };
 
+  class OBJLoader : public Loader {
+
+    public:
+      OBJLoader();
+
+    public:
+      void
+      load(const std::string& pathToFile,
+           const std::string& assetsFolderPath,
+           Loader::ScenesList& scenes) override;
+
+      void
+      freeScene() override;
+
+    private:
+      void
+      parseLine(std::string& line, std::shared_ptr<scene::Scene>& scene);
+
+      void
+      parseFace(std::string& line, scene::Mesh* currMesh);
+
+      unsigned int
+      parseFaceTriplet(std::string& face, scene::Primitive* p);
+
+      void
+      parseFloat3(std::string& line, std::vector<float>& container);
+
+      void
+      parseFloat2(std::string& line, std::vector<float>& container);
+
+      bool
+      parseFloat(std::string& token, std::vector<float>& container);
+
+      size_t
+      getRelativeIdx(int idx, size_t size);
+
+    private:
+      std::vector<float>                    vertices_;
+      std::vector<float>                    normals_;
+      std::vector<float>                    texcoords_;
+
+      std::unordered_map<std::string, uint> hashed_;
+
+      unsigned int                          idx_ = 0;
+      bool                                  requestPrimitive_;
+
+  };
+
   class Importer {
 
     public:
@@ -276,6 +439,8 @@ namespace tiny3Dloader {
     std::string ext = pathToFile.substr(pathToFile.find_last_of(".") + 1);
     if (ext == "gltf") {
       this->loader_ = std::make_shared<glTFLoader>();
+    } else if (ext == "obj") {
+      this->loader_ = std::make_shared<OBJLoader>();
     } else {
       return false;
     }
@@ -317,6 +482,10 @@ namespace tiny3Dloader {
     this->debug("Ends memory freeing..");
 
   }
+
+  //////////////////////////////////////////////////////////////////////////////
+  //                              glTF Loader                                 //
+  //////////////////////////////////////////////////////////////////////////////
 
   void
   glTFLoader::load(const std::string& pathToFile,
@@ -375,7 +544,6 @@ namespace tiny3Dloader {
 
   void
   glTFLoader::freeScene() {
-
 
     for (const auto& elt : this->binaryFiles_) {
       delete[] elt.second;
@@ -638,5 +806,299 @@ namespace tiny3Dloader {
     return true;
   }
 
-} // namespace tiny3Dloader
+  //////////////////////////////////////////////////////////////////////////////
+  //                               obj Loader                                 //
+  //////////////////////////////////////////////////////////////////////////////
 
+  OBJLoader::OBJLoader()
+            : requestPrimitive_{true}
+  { }
+
+  void
+  OBJLoader::load(const std::string &pathToFile,
+                  const std::string &assetsFolderPath,
+                  Loader::ScenesList &scenes) {
+
+    std::ifstream ifs(pathToFile, std::ios::in);
+
+    if (ifs.fail()) {
+      this->logMissingFile(pathToFile);
+      return;
+    }
+
+    // Wavefront .obj file format is different from the structure
+    // exposed by the Tiny3DLoader library.
+    // .obj objects are considered to be Tiny3DLoader nodes.
+    // .obj groups are considered to be Tiny3DLoader meshes with one primitive.
+    auto mesh = new scene::Mesh;
+    auto node = new scene::Node;
+
+    //mesh->primitives.push_back(prim);
+    node->meshes.push_back(mesh);
+
+    this->meshesMap_[0] = mesh;
+    this->nodesMap_[0] = node;
+
+    auto s = std::make_shared<scene::Scene>();
+    scenes.push_back(s);
+
+    std::string line;
+    while (ifs.peek() != -1) {
+      safeGetline(ifs, line);
+      leftTrim(line);
+
+      // Handles empty and commented lines
+      if (line.size() <= 3 || line[0] == '#') continue;
+
+      parseLine(line, s);
+    }
+
+    // Add final node
+    s->nodes.push_back(this->nodesMap_[this->nodesMap_.size() - 1]);
+
+  }
+
+  void
+  OBJLoader::freeScene() {
+
+    Loader::freeScene();
+
+  }
+
+  void
+  OBJLoader::parseLine(std::string& line, std::shared_ptr<scene::Scene>& s) {
+
+    scene::Node* currNode = this->nodesMap_[this->nodesMap_.size() - 1];
+    scene::Mesh* currMesh = this->meshesMap_[this->meshesMap_.size() - 1];
+
+    switch (line[0]) {
+      // Parses object, representing a Node
+      // in the Tiny3DLoader data structure.
+      case 'o': {
+        if (currMesh->primitives.size()) {
+          currNode = new scene::Node;
+          currMesh = new scene::Mesh;
+          this->nodesMap_[this->nodesMap_.size()] = currNode;
+          this->meshesMap_[this->meshesMap_.size()] = currMesh;
+          currNode->meshes.push_back(currMesh);
+          s->nodes.push_back(currNode);
+          requestPrimitive_ = true;
+        }
+        line[0] = ' ';
+        currNode->name = leftTrim(line);
+        break;
+      }
+      // Parses group, representing a Mesh and a primitive
+      // in the Tiny3DLoader data structure.
+      case 'g': {
+        if (currMesh->primitives.size()) {
+          currMesh = new scene::Mesh;
+          currNode->meshes.push_back(currMesh);
+          this->meshesMap_[this->meshesMap_.size()] = currMesh;
+          requestPrimitive_ = true;
+        }
+        line[0] = ' ';
+        currMesh->name = leftTrim(line);
+        break;
+      }
+      // Parses every data related to vertices:
+      // vertices, normals, texcoords...
+      case 'v': {
+        if (IS_SPACE(line[1])) {
+          line[0] = ' ';
+          parseFloat3(line, vertices_);
+        } else if (line[1] == 'n' && IS_SPACE(line[2])) {
+          line[0] = ' ';
+          line[1] = ' ';
+          parseFloat3(line, normals_);
+        } else if (line[1] == 't' && IS_SPACE(line[2])) {
+          line[0] = ' ';
+          line[1] = ' ';
+          parseFloat2(line, texcoords_);
+        }
+        break;
+      }
+      // Parses faces by linking previously parsed data into
+      // a Tiny3DLoader mesh.
+      case 'f': {
+        if (requestPrimitive_) {
+          scene::Primitive* currPrimitive = new scene::Primitive;
+          currMesh->primitives.push_back(currPrimitive);
+          requestPrimitive_ = false;
+          this->idx_ = 0;
+        }
+        if (IS_SPACE(line[1])) {
+          line[0] = ' ';
+          parseFace(line, currMesh);
+        }
+        break;
+      }
+      // Specifies a new material.
+      // Only one material can be applied to a Tiny3DLoader primitive.
+      case 'u': {
+        if (line.compare(0, 6, "usemtl") == 0) {
+          requestPrimitive_ = true;
+        }
+      }
+    }
+
+  }
+
+  void
+  OBJLoader::parseFace(std::string& line, scene::Mesh* mesh) {
+
+    size_t nbVertices = countTokens(line);
+    if (nbVertices == 0) return;
+
+    // Currently, Tiny3DLoader does not handle n-gons,
+    // it only deals with triangle and quads.
+    if (nbVertices > 4) {
+      this->logError("Face: only triangles and quads supported.");
+      return;
+    }
+
+    std::vector<std::string> facesToken;
+    facesToken.reserve(nbVertices);
+    while (!leftTrim(line).empty()) {
+      facesToken.push_back(nextToken(line));
+    }
+
+    auto& currPrimitive = mesh->primitives[mesh->primitives.size() - 1];
+    auto& primIndices = currPrimitive->indices;
+
+    // Face is already triangulated
+    if (nbVertices == 3) {
+      for (auto& f : facesToken) {
+        primIndices.push_back(parseFaceTriplet(f, currPrimitive));
+      }
+      return;
+    }
+
+    // Face is quadrangulated, we have to triangulate it.
+    // First triangle.
+    primIndices.push_back(parseFaceTriplet(facesToken[1], currPrimitive));
+    primIndices.push_back(parseFaceTriplet(facesToken[3], currPrimitive));
+    primIndices.push_back(parseFaceTriplet(facesToken[0], currPrimitive));
+    // Second triangle.
+    primIndices.push_back(parseFaceTriplet(facesToken[1], currPrimitive));
+    primIndices.push_back(parseFaceTriplet(facesToken[2], currPrimitive));
+    primIndices.push_back(parseFaceTriplet(facesToken[3], currPrimitive));
+
+  }
+
+  unsigned int
+  OBJLoader::parseFaceTriplet(std::string& faceTriplet, scene::Primitive* p) {
+
+    auto& primVertices = p->vertices;
+    auto& primNormals = p->normals;
+    auto& primTexcoords = p->texcoords;
+
+    size_t vId = 0;
+    size_t vnId = 0;
+    size_t vtId = 0;
+
+    // Optimization: Avoid having one index per vertex.
+    // The technique here is to save each face string 'v0/vn0/vt0'
+    // in a unique map, associated to a the real index later
+    // provided to glDrawElements.
+    auto hashIt = hashed_.find(faceTriplet);
+    if (hashIt != hashed_.end()) {
+      return hashIt->second;
+    }
+
+    unsigned int currIdx = this->idx_;
+
+    // The face string was not previously added to the hashed map,
+    // we can now add it, and create a new element index.
+    this->hashed_[faceTriplet] = currIdx;
+    this->idx_++;
+
+    // Extracts the wavefront obj vertex id given in a face
+    const char* ptr = faceTriplet.c_str();
+
+    vId = getRelativeIdx(std::atoi(ptr), vertices_.size() / 3);
+    primVertices.push_back(vertices_[vId * 3]);
+    primVertices.push_back(vertices_[vId * 3 + 1]);
+    primVertices.push_back(vertices_[vId * 3 + 2]);
+
+    ptr = ptr + strcspn(ptr, "/ \t\r\n");
+    // f v1 v2 v3 ...
+    if (ptr[0] != '/') return currIdx;
+
+    // f v1//vn1 v2//vn2
+    if ((++ptr)[0] == '/') {
+      vnId = getRelativeIdx(std::atoi(ptr + 1), normals_.size() / 3);
+      primNormals.push_back(normals_[vnId * 3]);
+      primNormals.push_back(normals_[vnId * 3 + 1]);
+      primNormals.push_back(normals_[vnId * 3 + 2]);
+      return currIdx;
+    }
+
+    // f v1/vt1 v2/vt2
+    const char* last = ptr + strcspn(ptr, "/ \t\r\n");
+    vtId = getRelativeIdx(std::atoi(ptr + 1), texcoords_.size() / 3);
+    primTexcoords.push_back(texcoords_[vtId * 3]);
+    primTexcoords.push_back(texcoords_[vtId * 3 + 1]);
+
+    if (last[0] != '/') return currIdx;
+
+    // f v1/vt1/vn1 v2/vt2/vn2
+    vnId = getRelativeIdx(std::atoi(ptr + 1), normals_.size() / 3);
+    primNormals.push_back(normals_[vnId * 3]);
+    primNormals.push_back(normals_[vnId * 3 + 1]);
+    primNormals.push_back(normals_[vnId * 3 + 2]);
+
+    return currIdx;
+
+  }
+
+  void
+  OBJLoader::parseFloat3(std::string& line, std::vector<float>& container) {
+
+    auto xStr = nextToken(line);
+    auto yStr = nextToken(line);
+    auto zStr = nextToken(line);
+
+    if (!parseFloat(xStr, container) || !parseFloat(yStr, container) ||
+        !parseFloat(zStr, container)) {
+      std::string error = "Float: parse error on line '" + line + "'";
+      this->logError(error);
+    }
+
+  }
+
+  void
+  OBJLoader::parseFloat2(std::string& line, std::vector<float>& container) {
+
+    auto xStr = nextToken(line);
+    auto yStr = nextToken(line);
+
+    if (!parseFloat(xStr, container) || !parseFloat(yStr, container)) {
+      std::string error = "Float: parse error on line '" + line + "'";
+      this->logError(error);
+    }
+
+  }
+
+  bool
+  OBJLoader::parseFloat(std::string& token, std::vector<float>& container) {
+
+    if (isNumber(token)) return false;
+
+    float val = std::stof(token);
+    container.push_back(val);
+
+    return true;
+
+  }
+
+  size_t
+  OBJLoader::getRelativeIdx(int idx, size_t size) {
+
+    if (idx > 0) return idx - 1;
+
+    return idx + size;
+
+  }
+
+} // namespace tiny3Dloader
