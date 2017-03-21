@@ -24,8 +24,8 @@
 
 #include <cmath>
 
-#include <tiny-3D-loader.hpp>
 #include <gtest/gtest.h>
+#include <tiny-3D-loader.hpp>
 
 namespace tiny3Dloader
 {

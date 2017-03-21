@@ -28,10 +28,11 @@ int main(int argc, char** argv)  {
   tiny3Dloader::Importer importer;
   importer.setDebug(true);
 
-  bool success = importer.load("models/Duck.gltf", "models/", scenes);
+  bool success = importer.load("models/obj/Road-merged-q.obj", "models/obj/",scenes);
 
   if (!success) std::cerr << importer.getError() << std::endl;
-  auto& scene = scenes[0];
+
+  tiny3Dloader::scene::Scene* ptr = scenes[0].get();
 
   importer.freeScene();
 
