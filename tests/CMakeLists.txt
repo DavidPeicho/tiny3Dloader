@@ -1,4 +1,4 @@
-add_executable(check main.cpp)
+add_executable(check main.cpp gltf.cpp obj.cpp utils.cpp)
 
 add_custom_command(TARGET check PRE_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory

@@ -20,12 +20,18 @@
  * SOFTWARE.
  */
 
-#include "main.hpp"
+#pragma once
 
-int
-main(int argc, char** argv)  {
+#include <gtest/gtest.h>
+#include <tiny-3D-loader.hpp>
 
-  testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+#include "utils.hpp"
 
-}
+namespace tiny3Dloader {
+
+namespace tests {
+
+} // namespace tests
+
+} // namespace tiny3Dloader
+
