@@ -20,12 +20,31 @@
  * SOFTWARE.
  */
 
-#include "main.hpp"
+#include "utils.hpp"
 
-int
-main(int argc, char** argv)  {
+namespace tiny3Dloader {
 
-  testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+namespace tests {
+
+namespace utils {
+
+bool
+vectorEquality(const std::vector<float>& a, const std::vector<float>& b) {
+
+  static auto comparator = [](float a, float b) -> bool {
+
+    if (fabs(a - b) <= 0.01f) return true;
+    return false;
+
+  };
+
+  return std::equal(a.begin(), a.end(), b.begin(), comparator);
 
 }
+
+} // namespace utils
+
+} // namespace tests
+
+
+} // namespace tiny3Dloader

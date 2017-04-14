@@ -25,14 +25,13 @@
 #include <cmath>
 
 #include <gtest/gtest.h>
-#include <tiny-3D-loader.hpp>
+#include "gltf.hpp"
+#include "obj.hpp"
 
-namespace tiny3Dloader
-{
-  namespace tests {
+namespace tiny3Dloader {
 
-    void
-    testReturnStatus(const char* file);
+namespace tests {
 
-  } // namespace tests
+} // namespace tests
+
 } // namespace tiny3Dloader

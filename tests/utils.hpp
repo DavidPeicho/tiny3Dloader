@@ -20,12 +20,36 @@
  * SOFTWARE.
  */
 
-#include "main.hpp"
+#pragma once
 
-int
-main(int argc, char** argv)  {
+#include <cmath>
+#include <vector>
 
-  testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+namespace tiny3Dloader {
+
+namespace tests {
+
+namespace utils {
+
+template <typename T>
+bool
+vectorEquality(const std::vector<T>& a, const std::vector<T>& b) {
+
+  static auto comparator = [](float a, float b) -> bool {
+
+    return (a == b);
+
+  };
+
+  return std::equal(a.begin(), a.end(), b.begin(), comparator);
 
 }
+
+bool
+vectorEquality(const std::vector<float>& a, const std::vector<float>& b);
+
+} // namespace utils
+
+} // namespace tests
+
+} // namespace tiny3Dloader
