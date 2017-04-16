@@ -20,6 +20,15 @@
  * SOFTWARE.
  */
 
+/*
+ *
+ * Usage:
+ *
+ * #define TINY3DLOADER_EXCEPTIONS // Required if exceptions are allowed
+ * #include "tiny-3D-loader.hpp"
+ *
+ */
+
 #pragma once
 
 #include "json.hpp"
@@ -29,6 +38,18 @@
 #include <string>
 
 #include <unordered_map>
+
+// Exceptions are disabled by default.
+// You can easily enable them by using the following macro.
+#if defined(TINY3DLOADER_EXCEPTIONS)
+  #define TINY3D_THROW(exception) throw exception
+  #define TINY3D_TRY try
+  #define TINY3D_CATCH(exception) catch(exception)
+#else
+  #define TINY3D_THROW(exception) /* empty */
+  #define TINY3D_TRY if (true)
+  #define TINY3D_CATCH(exception) if (false)
+#endif
 
 namespace tiny3Dloader {
 
@@ -144,6 +165,57 @@ isNumber(std::string& token) {
       pointFound = true;
     }
   }
+
+}
+
+namespace exceptions {
+
+class Tiny3DLoaderException : public std::exception {
+
+  public:
+    Tiny3DLoaderException(const std::string &msg) {
+
+      this->msg_ = "Tiny3DLoaderException: " + msg;
+
+    }
+
+    virtual const char *what() const noexcept {
+
+      return msg_.c_str();
+
+    }
+
+  protected:
+    std::string msg_;
+
+};
+
+class MissingFileError : public Tiny3DLoaderException {
+
+  public:
+    MissingFileError(const std::string& fileName)
+      : Tiny3DLoaderException("MissingFileError: " + fileName + " not found.") {
+    }
+
+};
+
+class InvalidFileError : public Tiny3DLoaderException {
+
+  public:
+    InvalidFileError(const std::string& fileName)
+      : Tiny3DLoaderException("InvalidFileError: " + fileName + " parse error.") {
+    }
+
+};
+
+class LogicError : public Tiny3DLoaderException {
+
+  public:
+    LogicError(const std::string& msg)
+      : Tiny3DLoaderException("LogicError: " + msg) {
+    }
+
+};
 
 }
 
@@ -344,6 +416,7 @@ class glTFLoader : public Loader {
 
       std::ifstream stream(pathToFile);
       if (stream.fail()) {
+        TINY3D_THROW(exceptions::MissingFileError(pathToFile));
         this->logMissingFile(pathToFile);
         return;
       }
@@ -354,6 +427,8 @@ class glTFLoader : public Loader {
 
       this->assetsFolderPath_ = assetsFolderPath;
 
+      // In case exceptions are activated, this raises an exception at the
+      // first mandatory key not found.
       if (!checkValidity()) return;
 
       uint nodeId = 0;
@@ -551,6 +626,7 @@ class glTFLoader : public Loader {
         if (target == glTFLoader::Target::ELT_ARRAY_BUFFER && stride != 0) {
           std::string error = "BufferView '" + std::to_string(bufferViewId);
           error += "': target is ELEMENT_ARRAY_BUFFER but byteStride isn't null.";
+          TINY3D_THROW(exceptions::LogicError(error));
           logError(error);
           return;
         }
@@ -560,6 +636,7 @@ class glTFLoader : public Loader {
         std::string error = "ComponentType: Bytes per component is ";
         error += std::to_string(bytePerComponent);
         error += " but loader expected at most " + std::to_string(sizeof(T));
+        TINY3D_THROW(exceptions::LogicError(error));
         this->logError(error);
         return;
       }
@@ -613,6 +690,7 @@ class glTFLoader : public Loader {
       std::ifstream ifs(uri, std::ios::in | std::ios::binary | std::ios::ate);
 
       if (ifs.fail()) {
+        TINY3D_THROW(exceptions::MissingFileError(bufferUri));
         this->logMissingFile(uri);
         return false;
       }
@@ -651,8 +729,8 @@ class glTFLoader : public Loader {
       if (!this->json_.count(key)) {
         std::string error = "MissingKey: '" + key;
         error += "' not found.";
+        TINY3D_THROW(exceptions::LogicError(error));
         this->logError(error);
-
         return false;
       }
 
@@ -1009,6 +1087,9 @@ class Importer {
       } else if (ext == "obj") {
         this->loader_ = std::make_shared<OBJLoader>();
       } else {
+        std::string error = "unsupported extension in '" + pathToFile + "`";
+        TINY3D_THROW(exceptions::Tiny3DLoaderException(error));
+        std::cerr << "Tiny3DLoader: Importer: " << error << std::endl;
         return false;
       }
 
