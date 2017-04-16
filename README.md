@@ -1,13 +1,13 @@
 # Tiny3DLoader
 
-**Tiny3DLoader** is an open source single-file library aiming to load some 3D formats.
+**Tiny3DLoader** is an open source headers-only library aiming to load some 3D formats.
 
 **Supported Formats:**
 * [glTF](https://github.com/KhronosGroup/glTF/tree/master/specification/1.0)
   * vertices, normals, texcoords and indices 
   * transforms
 * [obj](http://www.martinreddy.net/gfx/3d/OBJ.spec)
-  * work in progress
+  * vertices, normals, texcoords and indices
 
 **Tiny3DLoader** is greatly influenced by libraries such as [assimp](http://www.assimp.org/), [tinyobjloader](https://github.com/syoyo/tinyobjloader), or [tinygltfloader](https://github.com/syoyo/tinygltfloader)
 
@@ -22,6 +22,7 @@ The loader is also memory leaks free. We use [Valgrind](http://valgrind.org/) fo
 Both files to include are located in the ```includes``` directory.
 In order to use **Tiny3DLoader**, you just need to add:
 ```C++
+#define TINY3DLOADER_EXCEPTIONS // Only needed if you allow exceptions to be thrown
 #include "tiny-3D-loader.hpp"
 ...
 ```
@@ -51,13 +52,17 @@ $ cd bin && ./bin/check
 
 ## TODO
 
+* All
+  * [ ] optimize loading by removing std::string use
+  * [ ] add triangulation step for non-triangulated primitives
 * glTF
-  * [X] vertices, normals, indices
+  * [X] vertices, normals, texcoords, indices
   * [X] transforms
   * [ ] materials
   * [ ] animations
+  * [ ] binary format
 * obj
-  * [ ] vertices, normals, texcoords
+  * [X] vertices, normals, texcoords
   * [ ] materials
 
 ## Contributing
