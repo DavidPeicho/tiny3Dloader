@@ -55,6 +55,7 @@ $ cd bin && ./bin/check
 * All
   * [ ] optimize loading by removing std::string use
   * [ ] add triangulation step for non-triangulated primitives
+  * [ ] split declarations and definitions to simplify library usage
 * glTF
   * [X] vertices, normals, texcoords, indices
   * [X] transforms
