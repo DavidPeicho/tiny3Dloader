@@ -1,3 +1,8 @@
+> STATUS: Discontinued.
+> 
+> I worked on this project for my personal rendering engine, and simply just for fun.
+> I don't have as much free time anymore, so now I simply go for the awesome [TinyGLTF Loader](https://github.com/syoyo/tinygltf) for my projects.
+
 # Tiny3DLoader
 
 **Tiny3DLoader** is an open source headers-only library aiming to load some 3D formats.
